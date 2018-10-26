@@ -1,4 +1,7 @@
-# kubernetes集群中夺命的5秒DNS延迟
+---
+title: kubernetes集群中夺命的5秒DNS延迟
+---
+
 作者： 洪志国
 
 ## 超时问题
