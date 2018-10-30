@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2018-10-30T11:20:35.044Z">
+<meta property="og:updated_time" content="2018-10-30T11:24:03.668Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes集群中夺命的5秒DNS延迟">
 <meta name="twitter:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
@@ -147,7 +147,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjnvn5k5o000038v9zeqb2gca" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjnvna0kl00003rny1zfndgo6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -165,6 +165,11 @@
       </div>
     </a>
   
+  
+    <a href="/2018/10/21/开源项目/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">开源组件</div>
+    </a>
   
 </nav>
 
@@ -200,15 +205,15 @@
       <ul>
         
           <li>
-            <a href="/2018/10/30/开源项目/">开源组件</a>
-          </li>
-        
-          <li>
             <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
           </li>
         
           <li>
             <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/21/开源项目/">开源组件</a>
           </li>
         
       </ul>
