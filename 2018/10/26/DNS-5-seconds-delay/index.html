@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>kubernetes集群中夺命的5秒DNS延迟 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="kubernetes集群中夺命的5秒DNS延迟">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2018-10-30T11:20:35.044Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="kubernetes集群中夺命的5秒DNS延迟">
+<meta name="twitter:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-DNS-5-seconds-delay" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2018/10/26/DNS-5-seconds-delay/" class="article-date">
+  <time datetime="2018-10-26T07:52:37.000Z" itemprop="datePublished">2018-10-26</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      kubernetes集群中夺命的5秒DNS延迟
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者： 洪志国</p>
+<h2 id="超时问题"><a href="#超时问题" class="headerlink" title="超时问题"></a>超时问题</h2><p>客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。</p>
+<h2 id="DNS-5秒延时"><a href="#DNS-5秒延时" class="headerlink" title="DNS 5秒延时"></a>DNS 5秒延时</h2><p>在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。</p>
+<p>在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。</p>
+<p>为什么是5秒？ <code>man resolv.conf</code>可以看到glibc的resolver的缺省超时时间是5s。</p>
+<h2 id="丢包原因"><a href="#丢包原因" class="headerlink" title="丢包原因"></a>丢包原因</h2><p>经过搜索发现这是一个普遍问题。<br>根本原因是内核conntrack模块的bug。</p>
+<p>Weave works的工程师<a href="martynas@weave.works">Martynas Pumputis</a>对这个问题做了很详细的分析：<br><a href="https://www.weave.works/blog/racy-conntrack-and-dns-lookup-timeouts" target="_blank" rel="noopener">https://www.weave.works/blog/racy-conntrack-and-dns-lookup-timeouts</a></p>
+<p>相关结论：</p>
+<ul>
+<li>只有多个线程或进程，并发从同一个socket发送相同五元组的UDP报文时，才有一定概率会发生</li>
+<li>glibc, musl(alpine linux的libc库)都使用”parallel query”, 就是并发发出多个查询请求，因此很容易碰到这样的冲突，造成查询请求被丢弃</li>
+<li>由于ipvs也使用了conntrack, 使用kube-proxy的ipvs模式，并不能避免这个问题</li>
+</ul>
+<h2 id="问题的根本解决"><a href="#问题的根本解决" class="headerlink" title="问题的根本解决"></a>问题的根本解决</h2><p>Martynas向内核提交了两个patch来fix这个问题，不过他说如果集群中有多个DNS server的情况下，问题并没有完全解决。</p>
+<p>其中一个patch已经在2018-7-18被合并到linux内核主线中: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=ed07d9a021df6da53456663a76999189badc432a" target="_blank" rel="noopener">netfilter: nf_conntrack: resolve clash for matching conntracks</a></p>
+<p>目前只有4.19.rc 版本包含这个patch。</p>
+<h2 id="规避办法"><a href="#规避办法" class="headerlink" title="规避办法"></a>规避办法</h2><h4 id="规避方案一：使用TCP发送DNS请求"><a href="#规避方案一：使用TCP发送DNS请求" class="headerlink" title="规避方案一：使用TCP发送DNS请求"></a>规避方案一：使用TCP发送DNS请求</h4><p>由于TCP没有这个问题，有人提出可以在容器的resolv.conf中增加<code>options use-vc</code>, 强制glibc使用TCP协议发送DNS query。下面是这个man resolv.conf中关于这个选项的说明：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">use-vc (since glibc 2.14)</span><br><span class="line">                     Sets RES_USEVC in _res.options.  This option forces the</span><br><span class="line">                     use of TCP for DNS resolutions.</span><br></pre></td></tr></table></figure>
+<p>笔者使用镜像”busybox:1.29.3-glibc” (libc 2.24)  做了试验，并没有见到这样的效果，容器仍然是通过UDP发送DNS请求。</p>
+<h4 id="规避方案二：避免相同五元组DNS请求的并发"><a href="#规避方案二：避免相同五元组DNS请求的并发" class="headerlink" title="规避方案二：避免相同五元组DNS请求的并发"></a>规避方案二：避免相同五元组DNS请求的并发</h4><p>resolv.conf还有另外两个相关的参数： </p>
+<ul>
+<li>single-request-reopen (since glibc 2.9)</li>
+<li>single-request (since glibc 2.10)</li>
+</ul>
+<p>man resolv.conf中解释如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">single-request-reopen (since glibc 2.9)</span><br><span class="line">                     Sets RES_SNGLKUPREOP in _res.options.  The resolver</span><br><span class="line">                     uses the same socket for the A and AAAA requests.  Some</span><br><span class="line">                     hardware mistakenly sends back only one reply.  When</span><br><span class="line">                     that happens the client system will sit and wait for</span><br><span class="line">                     the second reply.  Turning this option on changes this</span><br><span class="line">                     behavior so that if two requests from the same port are</span><br><span class="line">                     not handled correctly it will close the socket and open</span><br><span class="line">                     a new one before sending the second request.</span><br><span class="line">                     </span><br><span class="line">single-request (since glibc 2.10)</span><br><span class="line">                     Sets RES_SNGLKUP in _res.options.  By default, glibc</span><br><span class="line">                     performs IPv4 and IPv6 lookups in parallel since</span><br><span class="line">                     version 2.9.  Some appliance DNS servers cannot handle</span><br><span class="line">                     these queries properly and make the requests time out.</span><br><span class="line">                     This option disables the behavior and makes glibc</span><br><span class="line">                     perform the IPv6 and IPv4 requests sequentially (at the</span><br><span class="line">                     cost of some slowdown of the resolving process).</span><br></pre></td></tr></table></figure>
+<p>笔者做了试验，发现效果是这样的：</p>
+<ul>
+<li>single-request-reopen<br>发送A类型请求和AAAA类型请求使用不同的源端口。这样两个请求在conntrack表中不占用同一个表项，从而避免冲突。</li>
+<li>single-request<br>避免并发，改为串行发送A类型和AAAA类型请求。没有了并发，从而也避免了冲突。</li>
+</ul>
+<p>要给容器的resolv.conf加上options参数，有几个办法：</p>
+<h5 id="1-在容器的”ENTRYPOINT”或者”CMD”脚本中，执行-bin-echo-39-options-single-request-reopen-39-gt-gt-etc-resolv-conf"><a href="#1-在容器的”ENTRYPOINT”或者”CMD”脚本中，执行-bin-echo-39-options-single-request-reopen-39-gt-gt-etc-resolv-conf" class="headerlink" title="1) 在容器的”ENTRYPOINT”或者”CMD”脚本中，执行/bin/echo &#39;options single-request-reopen&#39; &gt;&gt; /etc/resolv.conf"></a>1) 在容器的”ENTRYPOINT”或者”CMD”脚本中，执行<code>/bin/echo &#39;options single-request-reopen&#39; &gt;&gt; /etc/resolv.conf</code></h5><h5 id="2-在pod的postStart-hook中："><a href="#2-在pod的postStart-hook中：" class="headerlink" title="2) 在pod的postStart hook中："></a>2) 在pod的postStart hook中：</h5><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">lifecycle:</span><br><span class="line">  postStart:</span><br><span class="line">    exec:</span><br><span class="line">      command:</span><br><span class="line">      - /bin/sh</span><br><span class="line">      - -c </span><br><span class="line">      - &quot;/bin/echo &apos;options single-request-reopen&apos; &gt;&gt; /etc/resolv.conf&quot;</span><br></pre></td></tr></table></figure>
+<h5 id="3-使用template-spec-dnsConfig-k8s-v1-9-及以上才支持"><a href="#3-使用template-spec-dnsConfig-k8s-v1-9-及以上才支持" class="headerlink" title="3) 使用template.spec.dnsConfig (k8s v1.9 及以上才支持):"></a>3) 使用template.spec.dnsConfig (k8s v1.9 及以上才支持):</h5><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">template:</span><br><span class="line">  spec:</span><br><span class="line">    dnsConfig:</span><br><span class="line">      options:</span><br><span class="line">        - name: single-request-reopen</span><br></pre></td></tr></table></figure>
+<h5 id="4-使用ConfigMap覆盖POD里面的-etc-resolv-conf"><a href="#4-使用ConfigMap覆盖POD里面的-etc-resolv-conf" class="headerlink" title="4) 使用ConfigMap覆盖POD里面的/etc/resolv.conf"></a>4) 使用ConfigMap覆盖POD里面的/etc/resolv.conf</h5><p>configmap:<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: v1</span><br><span class="line">data:</span><br><span class="line">  resolv.conf: |</span><br><span class="line">    nameserver 1.2.3.4</span><br><span class="line">    search default.svc.cluster.local svc.cluster.local cluster.local ec2.internal</span><br><span class="line">    options ndots:5 single-request-reopen timeout:1</span><br><span class="line">kind: ConfigMap</span><br><span class="line">metadata:</span><br><span class="line">  name: resolvconf</span><br></pre></td></tr></table></figure></p>
+<p>POD spec:<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">        volumeMounts:</span><br><span class="line">        - name: resolv-conf</span><br><span class="line">          mountPath: /etc/resolv.conf</span><br><span class="line">          subPath: resolv.conf</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line">      volumes:</span><br><span class="line">      - name: resolv-conf</span><br><span class="line">        configMap:</span><br><span class="line">          name: resolvconf</span><br><span class="line">          items:</span><br><span class="line">          - key: resolv.conf</span><br><span class="line">            path: resolv.conf</span><br></pre></td></tr></table></figure></p>
+<h5 id="5-使用MutatingAdmissionWebhook"><a href="#5-使用MutatingAdmissionWebhook" class="headerlink" title="5) 使用MutatingAdmissionWebhook"></a>5) 使用MutatingAdmissionWebhook</h5><p><a href="https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#mutatingadmissionwebhook-beta-in-1-9" target="_blank" rel="noopener">MutatingAdmissionWebhook</a> 是1.9引入的Controller，用于对一个指定的Resource的操作之前，对这个resource进行变更。<br>istio的自动sidecar注入就是用这个功能来实现的。 我们也可以通过MutatingAdmissionWebhook，来自动给所有POD，注入以上3)或者4)所需要的相关内容。</p>
+<hr>
+<p>以上方法中， 1)和2)都需要修改镜像， 3)和4)则只需要修改POD的spec， 能适用于所有镜像。不过还是有不方便的地方：</p>
+<ul>
+<li>每个工作负载的yaml都要做修改，比较麻烦</li>
+<li>对于通过helm创建的工作负载，需要修改helm charts</li>
+</ul>
+<p>方法5)对集群使用者最省事，照常提交工作负载即可。不过初期需要一定的开发工作量。</p>
+<h4 id="规避方案三：使用本地DNS缓存"><a href="#规避方案三：使用本地DNS缓存" class="headerlink" title="规避方案三：使用本地DNS缓存"></a>规避方案三：使用本地DNS缓存</h4><p>容器的DNS请求都发往本地的DNS缓存服务(dnsmasq, nscd等)，不需要走DNAT，也不会发生conntrack冲突。另外还有个好处，就是避免DNS服务成为性能瓶颈。</p>
+<p>使用本地DNS缓存有两种方式：</p>
+<ul>
+<li>每个容器自带一个DNS缓存服务</li>
+<li>每个节点运行一个DNS缓存服务，所有容器都把本节点的DNS缓存作为自己的nameserver</li>
+</ul>
+<p>从资源效率的角度来考虑的话，推荐后一种方式。</p>
+<h5 id="实施办法"><a href="#实施办法" class="headerlink" title="实施办法"></a>实施办法</h5><p>条条大路通罗马，不管怎么做，最终到达上面描述的效果即可。</p>
+<p>POD中要访问节点上的DNS缓存服务，可以使用节点的IP。 如果节点上的容器都连在一个虚拟bridge上， 也可以使用这个bridge的三层接口的IP(在TKE中，这个三层接口叫cbr0)。 要确保DNS缓存服务监听这个地址。</p>
+<p>如何把POD的/etc/resolv.conf中的nameserver设置为节点IP呢？</p>
+<p>一个办法，是设置POD.spec.dnsPolicy为”Default”， 意思是POD里面的/etc/resolv.conf， 使用节点上的文件。缺省使用节点上的/etc/resolv.conf(如果kubelet通过参数–resolv-conf指定了其他文件，则使用–resolv-conf所指定的文件)。</p>
+<p>另一个办法，是给每个节点的kubelet指定不同的–cluster-dns参数，设置为节点的IP，POD.spec.dnsPolicy仍然使用缺省值”ClusterFirst”。 kops项目甚至有个issue在讨论如何在部署集群时设置好–cluster-dns指向节点IP: <a href="https://github.com/kubernetes/kops/issues/5584" target="_blank" rel="noopener">https://github.com/kubernetes/kops/issues/5584</a></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjnvn5k5o000038v9zeqb2gca" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2018/10/30/k8s-npc-kr-function/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          K8s Network Policy Controller之Kube-router功能介绍
+        
+      </div>
+    </a>
+  
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2018/10/30/开源项目/">开源组件</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2018 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
