@@ -1,5 +1,6 @@
 ---
 title: K8s Network Policy Controller之Kube-router功能介绍
+date: 2018/10/30 17:22:24
 ---
 
 Author: [Jimmy Zhang](https://github.com/jimmy-zh) (张浩)
