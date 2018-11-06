@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2018-10-30T12:05:29.429Z">
+<meta property="og:updated_time" content="2018-11-06T07:49:30.150Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes集群中夺命的5秒DNS延迟">
 <meta name="twitter:description" content="作者： 洪志国 超时问题客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。 DNS 5秒延时在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。 在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。 为什么是5秒？">
@@ -147,7 +147,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjnvorc9e00003nolazxhvy2q" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjo5fp2oa00001prltr2ttpvc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -192,7 +192,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -203,6 +203,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+          </li>
         
           <li>
             <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>

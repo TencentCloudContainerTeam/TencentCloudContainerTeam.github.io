@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>NodePort, Ingress, LB直通Pod性能测试对比 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   Ingress (如社区版的nginx ingress) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。 2. 测试">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="NodePort, Ingress, LB直通Pod性能测试对比">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   Ingress (如社区版的nginx ingress) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。 2. 测试">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2018-11-06T07:49:30.154Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="NodePort, Ingress, LB直通Pod性能测试对比">
+<meta name="twitter:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   Ingress (如社区版的nginx ingress) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。 2. 测试">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-NodePort-Ingress-LB直通容器性能测试对比" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" class="article-date">
+  <time datetime="2018-11-06T07:45:37.000Z" itemprop="datePublished">2018-11-06</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      NodePort, Ingress, LB直通Pod性能测试对比
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者：郭志宏 </p>
+<h3 id="1-测试背景："><a href="#1-测试背景：" class="headerlink" title="1. 测试背景："></a>1. 测试背景：</h3><p>目前基于k8s 服务的外网访问方式有以下几种：</p>
+<ol>
+<li>NodePort  </li>
+<li>Ingress (如社区版的nginx ingress)</li>
+<li>自研 LB -&gt; Pod （比如pod ip 作为 nginx 的 upstream）</li>
+</ol>
+<p>其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。</p>
+<h3 id="2-测试方案"><a href="#2-测试方案" class="headerlink" title="2. 测试方案"></a>2. 测试方案</h3><p>为了做到测试的准确性和全面性，我们提供以下测试工具和测试数据：</p>
+<ol>
+<li><p>2核4G 的Pod</p>
+</li>
+<li><p>5个Node 的4核8G 集群</p>
+</li>
+<li><p>16核32G 的Nginx 作为统一的LB</p>
+</li>
+<li><p>一个测试应用，2个静态测试接口，分别对用不同大小的数据包（4k 和 100K）</p>
+</li>
+<li><p>测试1个pod ，10个pod的情况（service/pod 越多，一个机器上的iptables 规则数就越多，关于iptables规则数对转发性能的影响，在“ipvs和iptables模式下性能对⽐比测试报告” 已有结论： Iptables场景下，对应service在总数为2000内时，每个service 两个pod, 性能没有明显下降。当service总数达到3000、4000时，性能下降明显，service个数越多，性能越差。）所以这里就不考虑pod数太多的情况。</p>
+</li>
+<li><p>单独的16核32G 机器作作为压力机，使用wrk 作为压测工具, qps 作为评估标准，</p>
+</li>
+<li><p>那么每种访问方式对应以下4种情况</p>
+<p>| 测试用例 | Pod 数 | 数据包大小 | 平均QPS |<br>| —- | —– | —– | —– |<br>| 1    | 1     | 4k    |       |<br>| 2    | 1     | 100K  |       |<br>| 3    | 10    | 4k    |       |<br>| 4    | 10    | 100k  |       |</p>
+</li>
+<li><p>每种情况测试5次，取平均值（qps），完善上表。</p>
+</li>
+</ol>
+<h3 id="3-测试过程"><a href="#3-测试过程" class="headerlink" title="3. 测试过程"></a>3. 测试过程</h3><ol>
+<li><p>准备一个测试应用（基于nginx），提供两个静态文件接口，分别返回4k的数据和100K 的数据。</p>
+<p>镜像地址：ccr.ccs.tencentyun.com/caryguo/nginx:v0.1</p>
+<p>接口：<a href="http://0.0.0.0/4k.html" target="_blank" rel="noopener">http://0.0.0.0/4k.html</a></p>
+<p>​            <a href="http://0.0.0.0/100k.htm" target="_blank" rel="noopener">http://0.0.0.0/100k.htm</a></p>
+</li>
+<li><p>部署压测工具。<a href="https://github.com/wg/wrk" target="_blank" rel="noopener">https://github.com/wg/wrk</a></p>
+</li>
+<li><p>部署集群，5台Node来调度测试Pod, 10.0.4.6 这台用来独部署Nginx, 作为统一的LB, 将这台机器加入集群的目的是为了 将ClusterIP 作为nginx 的upstream .</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">root@VM-4-6-ubuntu:/etc/nginx# kubectl get node</span><br><span class="line">NAME        STATUS                     ROLES     AGE       VERSION</span><br><span class="line">10.0.4.12   Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.3    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.5    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.6    Ready,SchedulingDisabled   &lt;none&gt;    12m       v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.7    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.9    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>根据不同的测试场景，调整Nginx 的upstream, 根据不同的Pod, 调整压力，让请求的超时率控制在万分之一以内,  数据如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">./wrk -c 200 -d 20 -t 10 http://carytest.pod.com/10k.html   单pod</span><br><span class="line">./wrk -c 1000 -d 20 -t 100 http://carytest.pod.com/4k.html  10 pod</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>测试wrk -&gt; nginx -&gt; Pod 场景，</p>
+</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>测试用例</th>
+<th>Pod 数</th>
+<th>数据包大小</th>
+<th>平均QPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>4k</td>
+<td>12498</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1</td>
+<td>100K</td>
+<td>2037</td>
+</tr>
+<tr>
+<td>3</td>
+<td>10</td>
+<td>4k</td>
+<td>82752</td>
+</tr>
+<tr>
+<td>4</td>
+<td>10</td>
+<td>100k</td>
+<td>7743</td>
+</tr>
+</tbody>
+</table>
+<ol start="5">
+<li>模拟测试Nginx ingress 场景。 wrk -&gt; nginx -&gt; ClusterIP -&gt; Pod</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>测试用例</th>
+<th>Pod 数</th>
+<th>数据包大小</th>
+<th>平均QPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>4k</td>
+<td>12568</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1</td>
+<td>100K</td>
+<td>2040</td>
+</tr>
+<tr>
+<td>3</td>
+<td>10</td>
+<td>4k</td>
+<td>81752</td>
+</tr>
+<tr>
+<td>4</td>
+<td>10</td>
+<td>100k</td>
+<td>7824</td>
+</tr>
+</tbody>
+</table>
+<ol start="6">
+<li>NodePort 场景，wrk -&gt; nginx -&gt; NodePort -&gt; Pod</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>测试用例</th>
+<th>Pod 数</th>
+<th>数据包大小</th>
+<th>平均QPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>4k</td>
+<td>12332</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1</td>
+<td>100K</td>
+<td>2028</td>
+</tr>
+<tr>
+<td>3</td>
+<td>10</td>
+<td>4k</td>
+<td>76973</td>
+</tr>
+<tr>
+<td>4</td>
+<td>10</td>
+<td>100k</td>
+<td>5676</td>
+</tr>
+</tbody>
+</table>
+<p>压测过程中，4k 数据包的情况下，应用的负载都在80% -100% 之间， 100k 情况下，应用的负载都在20%-30%</p>
+<p>之间，压力都在网络消耗上，没有到达服务后端。</p>
+<h3 id="4-测试结论"><a href="#4-测试结论" class="headerlink" title="4. 测试结论"></a>4. 测试结论</h3><ol>
+<li>在一个pod 的情况下（4k 或者100 数据包），3中网络方案差别不大，QPS 差距在3% 以内。</li>
+<li>在10个pod，4k 数据包情况下，lb-&gt;pod 和 nginx ingress 差距不大，NodePort 损失近7% 左右。</li>
+<li>10个Pod, 100k 数据包的情况下，lb-&gt;pod 和 nginx ingress 差距不大，NodePort 损失近 25% </li>
+</ol>
+<h3 id="5-附录"><a href="#5-附录" class="headerlink" title="5. 附录"></a>5. 附录</h3><ol>
+<li>nginx 配置</li>
+</ol>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br></pre></td><td class="code"><pre><span class="line">user nginx;</span><br><span class="line">worker_processes 50;</span><br><span class="line">error_log /var/log/nginx/error.log;</span><br><span class="line">pid /run/nginx.pid;</span><br><span class="line"></span><br><span class="line"># Load dynamic modules. See /usr/share/nginx/README.dynamic.</span><br><span class="line">include /usr/share/nginx/modules/*.conf;</span><br><span class="line"></span><br><span class="line">events &#123;</span><br><span class="line">    worker_connections 100000;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">http &#123;</span><br><span class="line">    log_format  main  &apos;$remote_addr - $remote_user [$time_local] &quot;$request&quot; &apos;</span><br><span class="line">                      &apos;$status $body_bytes_sent &quot;$http_referer&quot; &apos;</span><br><span class="line">                      &apos;&quot;$http_user_agent&quot; &quot;$http_x_forwarded_for&quot;&apos;;</span><br><span class="line"></span><br><span class="line">    access_log  /var/log/nginx/access.log  main;</span><br><span class="line"></span><br><span class="line">    sendfile            on;</span><br><span class="line">    tcp_nopush          on;</span><br><span class="line">    tcp_nodelay         on;</span><br><span class="line">    keepalive_timeout   65;</span><br><span class="line">    types_hash_max_size 2048;</span><br><span class="line"></span><br><span class="line">    include             /etc/nginx/mime.types;</span><br><span class="line">    default_type        application/octet-stream;</span><br><span class="line"></span><br><span class="line">    # Load modular configuration files from the /etc/nginx/conf.d directory.</span><br><span class="line">    # See http://nginx.org/en/docs/ngx_core_module.html#include</span><br><span class="line">    # for more information.</span><br><span class="line">    include /etc/nginx/conf.d/*.conf;</span><br><span class="line">    </span><br><span class="line">     # pod ip</span><br><span class="line">    upstream  panda-pod &#123;</span><br><span class="line">          #ip_hash;</span><br><span class="line">          # Pod ip</span><br><span class="line">          #server   10.0.4.12:30734  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.1.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.2.3:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.3.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.4.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.4.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.3.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.1.4:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.0.7:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.0.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.2.2:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          </span><br><span class="line">          # svc ip</span><br><span class="line">          #server   172.16.255.121:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">           </span><br><span class="line">          # NodePort</span><br><span class="line">          server   10.0.4.12:30734   max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.3:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.5:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.7:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.9:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">		    </span><br><span class="line">          keepalive 256;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    server &#123;</span><br><span class="line">        listen       80;</span><br><span class="line">        server_name  carytest.pod.com;</span><br><span class="line">        # root   /usr/share/nginx/html;</span><br><span class="line">        charset utf-8;</span><br><span class="line"></span><br><span class="line">        # Load configuration files for the default server block.</span><br><span class="line">        include /etc/nginx/default.d/*.conf;</span><br><span class="line">        location / &#123;</span><br><span class="line">                    proxy_pass        http://panda-pod;</span><br><span class="line">                    proxy_http_version 1.1;</span><br><span class="line">                    proxy_set_header Connection &quot;&quot;;</span><br><span class="line">                    proxy_redirect off;</span><br><span class="line">                    proxy_set_header  Host  $host;</span><br><span class="line">                    proxy_set_header  X-Real-IP  $remote_addr;</span><br><span class="line">                    proxy_set_header  X-Forwarded-For  $proxy_add_x_forwarded_for;</span><br><span class="line">                    proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;</span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        error_page 404 /404.html;</span><br><span class="line">            location = /40x.html &#123;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        error_page 500 502 503 504 /50x.html;</span><br><span class="line">            location = /50x.html &#123;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjo5fp2oj00011prl0gu2dnit" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2018/10/30/k8s-npc-kr-function/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">K8s Network Policy Controller之Kube-router功能介绍</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/21/开源项目/">开源组件</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2018 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
