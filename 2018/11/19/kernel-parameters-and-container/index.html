@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="腾讯云容器团队">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2018-11-19T13:50:56.404Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="腾讯云容器团队">
+<meta name="twitter:description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-kernel-parameters-and-container" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2018/11/19/kernel-parameters-and-container/" class="article-date">
+  <time datetime="2018-11-19T13:50:56.404Z" itemprop="datePublished">2018-11-19</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># ls /proc/sys</span><br><span class="line">abi  crypto  debug  dev  fs  kernel  net  vm</span><br></pre></td></tr></table></figure>
+<p>可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 1 &gt; /proc/sys/net/ipv4/ip_forward</span><br></pre></td></tr></table></figure>
+<p>也可以通过sysctl命令来完成(只是对以上写proc文件操作的简单包装)：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -w net.ipv4.ip_forward=1</span><br></pre></td></tr></table></figure>
+<p>其他常用sysctl命令：</p>
+<p>显示本机所有sysctl内核参数及当前值</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -a</span><br></pre></td></tr></table></figure>
+<p>从文件(缺省使用/etc/sysctl.conf)加载多个参数和取值，并写入内核</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -p [FILE]</span><br></pre></td></tr></table></figure>
+<p>另外， 系统启动的时候， 会自动执行一下”sysctl -p”。 所以，希望重启之后仍然生效的参数值， 应该写到/etc/sysctl.conf文件里面。</p>
+<h1 id="容器与sysctl"><a href="#容器与sysctl" class="headerlink" title="容器与sysctl"></a>容器与sysctl</h1><p>内核方面做了大量的工作，把一部分sysctl内核参数进行了namespace化(namespaced)。 也就是多个容器和主机可以各自独立设置某些内核参数。例如， 可以通过net.ipv4.ip_local_port_range，在不同容器中设置不同的端口范围。</p>
+<p>如何判断一个参数是不是namespaced? </p>
+<p>运行一个具有privileged权限的容器(参考下一节内容)， 然后在容器中修改该参数，看一下在host上能否看到容器在中所做的修改。如果看不到， 那就是namespaced， 否则不是。</p>
+<p>目前已经namespace化的sysctl内核参数：</p>
+<ul>
+<li>kernel.shm*,</li>
+<li>kernel.msg*,</li>
+<li>kernel.sem,</li>
+<li>fs.mqueue.*,</li>
+<li>net.*.</li>
+</ul>
+<p>注意， vm.*并没有namespace化。 比如vm.max_map_count， 在主机或者一个容器中设置它， 其他所有容器都会受影响，都会看到最新的值。</p>
+<h1 id="在docker容器中修改sysctl内核参数"><a href="#在docker容器中修改sysctl内核参数" class="headerlink" title="在docker容器中修改sysctl内核参数"></a>在docker容器中修改sysctl内核参数</h1><p>正常运行的docker容器中，是不能修改任何sysctl内核参数的。因为/proc/sys是以只读方式挂载到容器里面的。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">proc on /proc/sys type proc (ro,nosuid,nodev,noexec,relatime)</span><br></pre></td></tr></table></figure>
+<p>要给容器设置不一样的sysctl内核参数，有多种方式。</p>
+<h3 id="方法一-–privileged"><a href="#方法一-–privileged" class="headerlink" title="方法一 –privileged"></a>方法一 –privileged</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"># docker run --privileged -it ubuntu bash</span><br></pre></td></tr></table></figure>
+<p>整个/proc目录都是以”rw”权限挂载的<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)</span><br></pre></td></tr></table></figure></p>
+<p>在容器中，可以任意修改sysctl内核参赛。</p>
+<p>注意：<br>如果修改的是namespaced的参数， 则不会影响host和其他容器。反之，则会影响它们。</p>
+<p>如果想在容器中修改主机的net.ipv4.ip_default_ttl参数， 则除了–privileged， 还需要加上 –net=host。</p>
+<h3 id="方法二-把-proc-sys-bind到容器里面"><a href="#方法二-把-proc-sys-bind到容器里面" class="headerlink" title="方法二 把/proc/sys bind到容器里面"></a>方法二 把/proc/sys bind到容器里面</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"># docker run -v /proc/sys:/writable-sys -it ubuntu bash</span><br></pre></td></tr></table></figure>
+<p>然后写bind到容器内的proc文件</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 62 &gt; /writable-sys/net/ipv4/ip_default_ttl</span><br></pre></td></tr></table></figure>
+<p>注意：  这样操作，效果类似于”–privileged”, 对于namespaced的参数，不会影响host和其他容器。</p>
+<h3 id="方法三-–sysctl"><a href="#方法三-–sysctl" class="headerlink" title="方法三 –sysctl"></a>方法三 –sysctl</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># docker run -it --sysctl &apos;net.ipv4.ip_default_ttl=63&apos; ubuntu sysctl net.ipv4.ip_default_ttl</span><br><span class="line">net.ipv4.ip_default_ttl = 63</span><br></pre></td></tr></table></figure>
+<p>注意:</p>
+<ul>
+<li>只有namespaced参数才可以。否则会报错”invalid argument…”</li>
+<li>这种方式只是在容器初始化过程中完成内核参数的修改，容器运行起来以后，/proc/sys仍然是以只读方式挂载的，在容器中不能再次修改sysctl内核参数。</li>
+</ul>
+<h1 id="kubernetes-与-sysctl"><a href="#kubernetes-与-sysctl" class="headerlink" title="kubernetes 与 sysctl"></a>kubernetes 与 sysctl</h1><h3 id="方法一-通过sysctls和unsafe-sysctls-annotation"><a href="#方法一-通过sysctls和unsafe-sysctls-annotation" class="headerlink" title="方法一 通过sysctls和unsafe-sysctls annotation"></a>方法一 通过sysctls和unsafe-sysctls annotation</h3><p>k8s还进一步把syctl参数分为safe和unsafe。 safe的条件：</p>
+<ul>
+<li>must not have any influence on any other pod on the node</li>
+<li>must not allow to harm the node’s health</li>
+<li>must not allow to gain CPU or memory resources outside of the resource limits of a pod.</li>
+</ul>
+<p>非namespaced的参数，肯定是unsafe。</p>
+<p>namespaced参数，也只有一部分被认为是safe的。</p>
+<p>在pkg/kubelet/sysctl/whitelist.go中维护了safe sysctl参数的名单。在1.7.8的代码中，只有三个参数被认为是safe的：</p>
+<ul>
+<li>kernel.shm_rmid_forced,</li>
+<li>net.ipv4.ip_local_port_range,</li>
+<li>net.ipv4.tcp_syncookies</li>
+</ul>
+<p>如果要设置一个POD中safe参数，通过security.alpha.kubernetes.io/sysctls这个annotation来传递给kubelet。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">metadata:</span><br><span class="line">  name: sysctl-example</span><br><span class="line">  annotations:</span><br><span class="line">    security.alpha.kubernetes.io/sysctls: kernel.shm_rmid_forced=1</span><br></pre></td></tr></table></figure>
+<p>如果要设置一个namespaced， 但是unsafe的参数，要使用另一个annotation: security.alpha.kubernetes.io/unsafe-sysctls， 另外还要给kubelet一个特殊的启动参数。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: v1</span><br><span class="line">kind: Pod</span><br><span class="line">metadata:</span><br><span class="line">  name: sysctl-example</span><br><span class="line">  annotations:</span><br><span class="line">    security.alpha.kubernetes.io/sysctls: kernel.shm_rmid_forced=1</span><br><span class="line">    security.alpha.kubernetes.io/unsafe-sysctls: net.ipv4.route.min_pmtu=1000,kernel.msgmax=1 2 3</span><br><span class="line">spec:</span><br><span class="line">  ...</span><br></pre></td></tr></table></figure>
+<p>kubelet 增加–experimental-allowed-unsafe-sysctls启动参数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubelet --experimental-allowed-unsafe-sysctls &apos;kernel.msg*,net.ipv4.route.min_pmtu&apos;</span><br></pre></td></tr></table></figure>
+<h3 id="方法二-privileged-POD"><a href="#方法二-privileged-POD" class="headerlink" title="方法二 privileged POD"></a>方法二 privileged POD</h3><p>如果要修改的是非namespaced的参数， 如vm.*， 那就没办法使用以上方法。 可以给POD privileged权限，然后在容器的初始化脚本或代码中去修改sysctl参数。</p>
+<p>创建POD/deployment/daemonset等对象时， 给容器的spec指定securityContext.privileged=true<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">spec:</span><br><span class="line">  containers:</span><br><span class="line">  - image: nginx:alpine</span><br><span class="line">    securityContext:</span><br><span class="line">      privileged: true</span><br></pre></td></tr></table></figure></p>
+<p>这样跟”docker run –privileged”效果一样，在POD中/proc是以”rw”权限mount的，可以直接修改相关sysctl内核参数。</p>
+<h1 id="ulimit"><a href="#ulimit" class="headerlink" title="ulimit"></a>ulimit</h1><p>每个进程都有若干操作系统资源的限制， 可以通过 /proc/$PID/limits 来查看。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ cat /proc/1/limits </span><br><span class="line">Limit                     Soft Limit           Hard Limit           Units     </span><br><span class="line">Max cpu time              unlimited            unlimited            seconds   </span><br><span class="line">Max file size             unlimited            unlimited            bytes     </span><br><span class="line">Max data size             unlimited            unlimited            bytes     </span><br><span class="line">Max stack size            8388608              unlimited            bytes     </span><br><span class="line">Max core file size        0                    unlimited            bytes     </span><br><span class="line">Max resident set          unlimited            unlimited            bytes     </span><br><span class="line">Max processes             62394                62394                processes </span><br><span class="line">Max open files            1024                 4096                 files     </span><br><span class="line">Max locked memory         65536                65536                bytes     </span><br><span class="line">Max address space         unlimited            unlimited            bytes     </span><br><span class="line">Max file locks            unlimited            unlimited            locks     </span><br><span class="line">Max pending signals       62394                62394                signals   </span><br><span class="line">Max msgqueue size         819200               819200               bytes     </span><br><span class="line">Max nice priority         0                    0                    </span><br><span class="line">Max realtime priority     0                    0                    </span><br><span class="line">Max realtime timeout      unlimited            unlimited            us</span><br></pre></td></tr></table></figure>
+<p>在bash中有个ulimit内部命令，可以查看当前bash进程的这些限制。</p>
+<p>跟ulimit属性相关的配置文件是/etc/security/limits.conf。具体配置项和语法可以通过<code>man limits.conf</code> 命令查看。</p>
+<h3 id="systemd给docker-daemon自身配置ulimit"><a href="#systemd给docker-daemon自身配置ulimit" class="headerlink" title="systemd给docker daemon自身配置ulimit"></a>systemd给docker daemon自身配置ulimit</h3><p>在service文件中(一般是/usr/lib/systemd/system/dockerd.service)中可以配置：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">[Service]</span><br><span class="line">LimitAS=infinity</span><br><span class="line">LimitRSS=infinity</span><br><span class="line">LimitCORE=infinity</span><br><span class="line">LimitNOFILE=65536</span><br><span class="line">ExecStart=...</span><br><span class="line">WorkingDirectory=...</span><br><span class="line">User=...</span><br><span class="line">Group=...</span><br></pre></td></tr></table></figure>
+<h3 id="dockerd-给容器的-缺省ulimit设置"><a href="#dockerd-给容器的-缺省ulimit设置" class="headerlink" title="dockerd 给容器的 缺省ulimit设置"></a>dockerd 给容器的 缺省ulimit设置</h3><p>dockerd –default-ulimit nofile=65536:65536</p>
+<p>冒号前面是soft limit, 后面是hard limit</p>
+<h3 id="给容器指定ulimit设置"><a href="#给容器指定ulimit设置" class="headerlink" title="给容器指定ulimit设置"></a>给容器指定ulimit设置</h3><p>docker run -d –ulimit nofile=20480:40960 nproc=1024:2048 容器名</p>
+<h3 id="在kubernetes中给pod设置ulimit参数"><a href="#在kubernetes中给pod设置ulimit参数" class="headerlink" title="在kubernetes中给pod设置ulimit参数"></a>在kubernetes中给pod设置ulimit参数</h3><p>有一个issue在讨论这个问题： <a href="https://github.com/kubernetes/kubernetes/issues/3595" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/3595</a></p>
+<p>目前可行的办法，是在镜像中的初始化程序中调用setrlimit()系统调用来进行设置。子进程会继承父进程的ulimit参数。</p>
+<h1 id="参考文档："><a href="#参考文档：" class="headerlink" title="参考文档："></a>参考文档：</h1><p><a href="http://tapd.oa.com/CCCM/prong/stories/view/1010166561060564549" target="_blank" rel="noopener">http://tapd.oa.com/CCCM/prong/stories/view/1010166561060564549</a></p>
+<p><a href="https://kubernetes.io/docs/concepts/cluster-administration/sysctl-cluster/" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/cluster-administration/sysctl-cluster/</a></p>
+<p><a href="https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities" target="_blank" rel="noopener">https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities</a></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjoodbyrn000144m10bb0as6g" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">NodePort, Ingress, LB直通Pod性能测试对比</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2018/11/19/kernel-parameters-and-container/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/21/开源项目/">开源组件</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2018 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
