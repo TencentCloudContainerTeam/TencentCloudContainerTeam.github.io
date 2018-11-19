@@ -5,20 +5,20 @@
   
 
   
-  <title>腾讯云容器团队</title>
+  <title>给容器设置内核参数 | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+  <meta name="description" content="作者： 洪志国 sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forwar">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
-<meta property="og:title" content="腾讯云容器团队">
+<meta property="og:title" content="给容器设置内核参数">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+<meta property="og:description" content="作者： 洪志国 sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forwar">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2018-11-19T13:50:56.404Z">
+<meta property="og:updated_time" content="2018-11-19T14:05:24.712Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="腾讯云容器团队">
-<meta name="twitter:description" content="sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forward 也可以通过s">
+<meta name="twitter:title" content="给容器设置内核参数">
+<meta name="twitter:description" content="作者： 洪志国 sysctl/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。 12# ls /proc/sysabi  crypto  debug  dev  fs  kernel  net  vm 可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能： 1echo 1 &amp;gt; /proc/sys/net/ipv4/ip_forwar">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
   
@@ -68,16 +68,27 @@
         <section id="main"><article id="post-kernel-parameters-and-container" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2018/11/19/kernel-parameters-and-container/" class="article-date">
-  <time datetime="2018-11-19T13:50:56.404Z" itemprop="datePublished">2018-11-19</time>
+  <time datetime="2018-11-19T13:52:00.000Z" itemprop="datePublished">2018-11-19</time>
 </a>
     
   </div>
   <div class="article-inner">
     
     
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      给容器设置内核参数
+    </h1>
+  
+
+      </header>
+    
     <div class="article-entry" itemprop="articleBody">
       
-        <h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
+        <p>作者： 洪志国</p>
+<h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># ls /proc/sys</span><br><span class="line">abi  crypto  debug  dev  fs  kernel  net  vm</span><br></pre></td></tr></table></figure>
 <p>可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 1 &gt; /proc/sys/net/ipv4/ip_forward</span><br></pre></td></tr></table></figure>
@@ -160,7 +171,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjoodbyrn000144m10bb0as6g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjoodukrr00044jo89wrue49y" class="article-share-link">Share</a>
       
       
     </footer>
@@ -209,7 +220,7 @@
       <ul>
         
           <li>
-            <a href="/2018/11/19/kernel-parameters-and-container/">(no title)</a>
+            <a href="/2018/11/19/kernel-parameters-and-container/">给容器设置内核参数</a>
           </li>
         
           <li>

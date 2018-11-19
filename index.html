@@ -66,16 +66,27 @@
     <article id="post-kernel-parameters-and-container" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2018/11/19/kernel-parameters-and-container/" class="article-date">
-  <time datetime="2018-11-19T13:50:56.404Z" itemprop="datePublished">2018-11-19</time>
+  <time datetime="2018-11-19T13:52:00.000Z" itemprop="datePublished">2018-11-19</time>
 </a>
     
   </div>
   <div class="article-inner">
     
     
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2018/11/19/kernel-parameters-and-container/">给容器设置内核参数</a>
+    </h1>
+  
+
+      </header>
+    
     <div class="article-entry" itemprop="articleBody">
       
-        <h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
+        <p>作者： 洪志国</p>
+<h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># ls /proc/sys</span><br><span class="line">abi  crypto  debug  dev  fs  kernel  net  vm</span><br></pre></td></tr></table></figure>
 <p>可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 1 &gt; /proc/sys/net/ipv4/ip_forward</span><br></pre></td></tr></table></figure>
@@ -158,7 +169,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjoodbyrn000144m10bb0as6g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjoodukrr00044jo89wrue49y" class="article-share-link">Share</a>
       
       
     </footer>
@@ -399,7 +410,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjoodbyrd000044m1y4pyvorw" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjoodukre00014jo83orpmg1s" class="article-share-link">Share</a>
       
       
     </footer>
@@ -519,7 +530,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjoodbys0000444m1vhvedwli" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjoodukrq00034jo89afflfl8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -611,7 +622,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjoodbyrr000344m1fi5li348" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjoodukr500004jo80713rj20" class="article-share-link">Share</a>
       
       
     </footer>
@@ -654,7 +665,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjoodbyrp000244m1nxqkj7i4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjoodukrh00024jo8mavevfy2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -695,7 +706,7 @@
       <ul>
         
           <li>
-            <a href="/2018/11/19/kernel-parameters-and-container/">(no title)</a>
+            <a href="/2018/11/19/kernel-parameters-and-container/">给容器设置内核参数</a>
           </li>
         
           <li>
