@@ -144,7 +144,7 @@ func EnableKernelMemoryAccounting(path string) error {
 
 runc社区也注意到这个问题，并做了比较灵活的修复： https://github.com/opencontainers/runc/pull/1921
 
-这个修复给runc增加了"nokmem"编译选项。缺省的release版本没有打开这个选项，适用于4.x的高版本内核。 如果要在3.x版本内核上使用runc， 那就需要自己编译：
+这个修复给runc增加了"nokmem"编译选项。缺省的release版本没有使用这个选项。 自己使用nokmem选项编译runc的方法：
 
 ```
 cd $GO_PATH/src/github.com/opencontainers/runc/
