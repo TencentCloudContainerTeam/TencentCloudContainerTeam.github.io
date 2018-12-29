@@ -138,7 +138,7 @@
 <p>kubelet和runc都会给memory cgroup开启kmem accounting。所以要规避这个问题，就要保证kubelet和runc，都别开启kmem accounting。下面分别进行说明。 </p>
 <h2 id="runc"><a href="#runc" class="headerlink" title="runc"></a>runc</h2><p>查看代码，发现在commit fe898e7 (2017-2-25, PR #1350)以后的runc版本中，都会默认开启kmem accounting。代码在libcontainer/cgroups/fs/kmem.go: (老一点的版本，代码在libcontainer/cgroups/fs/memory.go)<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">const cgroupKernelMemoryLimit = &quot;memory.kmem.limit_in_bytes&quot;</span><br><span class="line"></span><br><span class="line">func EnableKernelMemoryAccounting(path string) error &#123;</span><br><span class="line">        // Ensure that kernel memory is available in this kernel build. If it</span><br><span class="line">        // isn&apos;t, we just ignore it because EnableKernelMemoryAccounting is</span><br><span class="line">        // automatically called for all memory limits.</span><br><span class="line">        if !cgroups.PathExists(filepath.Join(path, cgroupKernelMemoryLimit)) &#123;</span><br><span class="line">                return nil</span><br><span class="line">        &#125;</span><br><span class="line">        // We have to limit the kernel memory here as it won&apos;t be accounted at all</span><br><span class="line">        // until a limit is set on the cgroup and limit cannot be set once the</span><br><span class="line">        // cgroup has children, or if there are already tasks in the cgroup.</span><br><span class="line">        for _, i := range []int64&#123;1, -1&#125; &#123;</span><br><span class="line">                if err := setKernelMemory(path, i); err != nil &#123;</span><br><span class="line">                        return err</span><br><span class="line">                &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        return nil</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
 <p>runc社区也注意到这个问题，并做了比较灵活的修复： <a href="https://github.com/opencontainers/runc/pull/1921" target="_blank" rel="noopener">https://github.com/opencontainers/runc/pull/1921</a></p>
-<p>这个修复给runc增加了”nokmem”编译选项。缺省的release版本没有打开这个选项，适用于4.x的高版本内核。 如果要在3.x版本内核上使用runc， 那就需要自己编译：</p>
+<p>这个修复给runc增加了”nokmem”编译选项。缺省的release版本没有使用这个选项。 自己使用nokmem选项编译runc的方法：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cd $GO_PATH/src/github.com/opencontainers/runc/</span><br><span class="line">make BUILDTAGS=&quot;seccomp nokmem&quot;</span><br></pre></td></tr></table></figure>
 <h2 id="kubelet"><a href="#kubelet" class="headerlink" title="kubelet"></a>kubelet</h2><p>kubelet在创建pod对应的cgroup目录时，也会调用libcontianer中的代码对cgroup做设置。在   <code>pkg/kubelet/cm/cgroup_manager_linux.go</code>的Create方法中，会调用Manager.Apply方法，最终调用<code>vendor/github.com/opencontainers/runc/libcontainer/cgroups/fs/memory.go</code>中的MemoryGroup.Apply方法，开启kmem accounting。</p>
 <p>这里也需要进行处理，可以不开启kmem accounting， 或者通过命令行参数来控制是否开启。</p>
@@ -148,7 +148,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjq99ig0p00029dn9qapomvgc" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjq99rffo0002beu1vajgh2c2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -264,7 +264,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjq99ig1300059dn9cbsoskpw" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjq99rffz0005beu10gp874qf" class="article-share-link">Share</a>
       
       
     </footer>
@@ -505,7 +505,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjq99ig0n00019dn9tsd7vjqx" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjq99rffl0001beu1fmog9vr8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -625,7 +625,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjq99ig1100049dn9mfgxcrcm" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjq99rffy0004beu1ffploo8j" class="article-share-link">Share</a>
       
       
     </footer>
@@ -717,7 +717,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjq99ig0e00009dn9we968zu7" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjq99rffd0000beu1bdg31xi7" class="article-share-link">Share</a>
       
       
     </footer>
@@ -760,7 +760,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjq99ig0r00039dn9ghmfhkqi" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjq99rffp0003beu1hy6oj2uz" class="article-share-link">Share</a>
       
       
     </footer>
