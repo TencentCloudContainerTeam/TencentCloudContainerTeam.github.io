@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>Cgroup泄漏--潜藏在你的集群中 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 洪志国 前言绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。  一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。 一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。 故障表现腾讯云SCF(Serverless Cloud F">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Cgroup泄漏--潜藏在你的集群中">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 洪志国 前言绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。  一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。 一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。 故障表现腾讯云SCF(Serverless Cloud F">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2018-12-29T09:26:49.762Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Cgroup泄漏--潜藏在你的集群中">
+<meta name="twitter:description" content="作者: 洪志国 前言绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。  一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。 一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。 故障表现腾讯云SCF(Serverless Cloud F">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-cgroup-leaking" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2018/12/29/cgroup-leaking/" class="article-date">
+  <time datetime="2018-12-29T09:00:00.000Z" itemprop="datePublished">2018-12-29</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      Cgroup泄漏--潜藏在你的集群中
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/honkiko" target="_blank" rel="noopener">洪志国</a></p>
+<h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。 </p>
+<p>一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。</p>
+<p>一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。</p>
+<h2 id="故障表现"><a href="#故障表现" class="headerlink" title="故障表现"></a>故障表现</h2><p>腾讯云SCF(Serverless Cloud Function)底层使用我们的TKE(Tencent Kubernetes Engine)，并且会在节点上频繁创建和消耗容器。</p>
+<p>SCF发现很多节点会出现类似以下报错，创建POD总是失败：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Dec 24 11:54:31 VM_16_11_centos dockerd[11419]: time=&quot;2018-12-24T11:54:31.195900301+08:00&quot; level=error msg=&quot;Handler for POST /v1.31/containers/b98d4aea818bf9d1d1aa84079e1688cd9b4218e008c58a8ef6d6c3c106403e7b/start returned error: OCI runtime create failed: container_linux.go:348: starting container process caused \&quot;process_linux.go:279: applying cgroup configuration for process caused \\\&quot;mkdir /sys/fs/cgroup/memory/kubepods/burstable/pod79fe803c-072f-11e9-90ca-525400090c71/b98d4aea818bf9d1d1aa84079e1688cd9b4218e008c58a8ef6d6c3c106403e7b: no space left on device\\\&quot;\&quot;: unknown&quot;</span><br></pre></td></tr></table></figure>
+<p>这个时候，到节点上尝试创建几十个memory cgroup (以root权限执行 <code>for i in</code>seq 1 20<code>;do mkdir /sys/fs/cgroup/memory/${i}; done</code>)，就会碰到失败：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir: cannot create directory &apos;/sys/fs/cgroup/memory/8&apos;: No space left on device</span><br></pre></td></tr></table></figure>
+<p>其实，dockerd出现以上报错时， 手动创建<strong><em>一个</em></strong>memory cgroup都会失败的。 不过有时候随着一些POD的运行结束，可能会多出来一些“配额”，所以这里是尝试创建20个memory cgroup。</p>
+<p>出现这样的故障以后，重启docker，释放内存等措施都没有效果，只有重启节点才能恢复。</p>
+<h2 id="复现条件"><a href="#复现条件" class="headerlink" title="复现条件"></a>复现条件</h2><p>docker和kubernetes社区都有关于这个问题的issue:</p>
+<ul>
+<li><a href="https://github.com/moby/moby/issues/29638" target="_blank" rel="noopener">https://github.com/moby/moby/issues/29638</a></li>
+<li><a href="https://github.com/kubernetes/kubernetes/issues/70324" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/70324</a></li>
+</ul>
+<p>网上有文章介绍了类似问题的分析和复现方法。如：<br><a href="http://www.linuxfly.org/kubernetes-19-conflict-with-centos7/?from=groupmessage" target="_blank" rel="noopener">http://www.linuxfly.org/kubernetes-19-conflict-with-centos7/?from=groupmessage</a></p>
+<p>不过按照文中的复现方法，我在<code>3.10.0-862.9.1.el7.x86_64</code>版本内核上并没有复现出来。</p>
+<p>经过反复尝试，总结出了必现的复现条件。 一句话感慨就是，把进程加入到一个开启了kmem accounting的memory cgroup<strong><em>并且执行fork系统调用</em></strong>。</p>
+<ol>
+<li>centos 3.10.0-862.9.1.el7.x86_64及以下内核， 4G以上空闲内存，root权限。</li>
+<li><p>把系统memory cgroup配额占满</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">for i in `seq 1 65536`;do mkdir /sys/fs/cgroup/memory/$&#123;i&#125;; done</span><br></pre></td></tr></table></figure>
+<p> 会看到报错：</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir: cannot create directory ‘/sys/fs/cgroup/memory/65530’: No space left on device</span><br></pre></td></tr></table></figure>
+<p> 这是因为这个版本内核写死了，最多只能有65535个memory cgroup共存。 systemd已经创建了一些，所以这里创建不到65535个就会遇到报错。</p>
+<p> 确认删掉一个memory cgroup, 就能腾出一个“配额”：</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">rmdir /sys/fs/cgroup/memory/1</span><br><span class="line">mkdir /sys/fs/cgroup/memory/test</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>给一个memory cgroup开启kmem accounting</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cd /sys/fs/cgroup/memory/test/</span><br><span class="line">echo 1 &gt; memory.kmem.limit_in_bytes</span><br><span class="line">echo -1 &gt; memory.kmem.limit_in_bytes</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>把一个进程加进某个memory cgroup, 并执行一次fork系统调用</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">最简单的就是把当前shell进程加进去：</span><br><span class="line">echo $$ &gt; /sys/fs/cgroup/memory/test/tasks</span><br><span class="line">sleep 100 &amp;</span><br><span class="line">cat /sys/fs/cgroup/memory/test/tasks</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>把该memory cgroup里面的进程都挪走</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">for p in `cat /sys/fs/cgroup/memory/test/tasks`;do echo $&#123;p&#125; &gt; /sys/fs/cgroup/memory/tasks; done</span><br><span class="line"></span><br><span class="line">cat /sys/fs/cgroup/memory/test/tasks  //这时候应该为空</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>删除这个memory cgroup</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">rmdir /sys/fs/cgroup/memory/test</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>验证刚才删除一个memory cgroup， 所占的配额并没有释放</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir /sys/fs/cgroup/memory/xx</span><br></pre></td></tr></table></figure>
+<p> 这时候会报错：<code>mkdir: cannot create directory ‘/sys/fs/cgroup/memory/xx’: No space left on device</code></p>
+</li>
+</ol>
+<h2 id="什么版本的内核有这个问题"><a href="#什么版本的内核有这个问题" class="headerlink" title="什么版本的内核有这个问题"></a>什么版本的内核有这个问题</h2><p>搜索内核commit记录，有一个commit应该是解决类似问题的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">4bdfc1c4a943: 2015-01-08 memcg: fix destination cgroup leak on task charges migration [Vladimir Davydov]</span><br></pre></td></tr></table></figure>
+<p>这个commit在3.19以及4.x版本的内核中都已经包含。 不过从docker和kubernetes相关issue里面的反馈来看，内核中应该还有其他cgroup泄漏的代码路径， 4.14版本内核都还有cgroup泄漏问题。</p>
+<h2 id="规避办法"><a href="#规避办法" class="headerlink" title="规避办法"></a>规避办法</h2><p>不开启kmem accounting (以上复现步骤的第3步)的话，是不会发生cgroup泄漏的。</p>
+<p>kubelet和runc都会给memory cgroup开启kmem accounting。所以要规避这个问题，就要保证kubelet和runc，都别开启kmem accounting。下面分别进行说明。 </p>
+<h2 id="runc"><a href="#runc" class="headerlink" title="runc"></a>runc</h2><p>查看代码，发现在commit fe898e7 (2017-2-25, PR #1350)以后的runc版本中，都会默认开启kmem accounting。代码在libcontainer/cgroups/fs/kmem.go: (老一点的版本，代码在libcontainer/cgroups/fs/memory.go)<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">const cgroupKernelMemoryLimit = &quot;memory.kmem.limit_in_bytes&quot;</span><br><span class="line"></span><br><span class="line">func EnableKernelMemoryAccounting(path string) error &#123;</span><br><span class="line">        // Ensure that kernel memory is available in this kernel build. If it</span><br><span class="line">        // isn&apos;t, we just ignore it because EnableKernelMemoryAccounting is</span><br><span class="line">        // automatically called for all memory limits.</span><br><span class="line">        if !cgroups.PathExists(filepath.Join(path, cgroupKernelMemoryLimit)) &#123;</span><br><span class="line">                return nil</span><br><span class="line">        &#125;</span><br><span class="line">        // We have to limit the kernel memory here as it won&apos;t be accounted at all</span><br><span class="line">        // until a limit is set on the cgroup and limit cannot be set once the</span><br><span class="line">        // cgroup has children, or if there are already tasks in the cgroup.</span><br><span class="line">        for _, i := range []int64&#123;1, -1&#125; &#123;</span><br><span class="line">                if err := setKernelMemory(path, i); err != nil &#123;</span><br><span class="line">                        return err</span><br><span class="line">                &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        return nil</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>runc社区也注意到这个问题，并做了比较灵活的修复： <a href="https://github.com/opencontainers/runc/pull/1921" target="_blank" rel="noopener">https://github.com/opencontainers/runc/pull/1921</a></p>
+<p>这个修复给runc增加了”nokmem”编译选项。缺省的release版本没有打开这个选项，适用于4.x的高版本内核。 如果要在3.x版本内核上使用runc， 那就需要自己编译：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cd $GO_PATH/src/github.com/opencontainers/runc/</span><br><span class="line">make BUILDTAGS=&quot;seccomp nokmem&quot;</span><br></pre></td></tr></table></figure>
+<h2 id="kubelet"><a href="#kubelet" class="headerlink" title="kubelet"></a>kubelet</h2><p>kubelet在创建pod对应的cgroup目录时，也会调用libcontianer中的代码对cgroup做设置。在   <code>pkg/kubelet/cm/cgroup_manager_linux.go</code>的Create方法中，会调用Manager.Apply方法，最终调用<code>vendor/github.com/opencontainers/runc/libcontainer/cgroups/fs/memory.go</code>中的MemoryGroup.Apply方法，开启kmem accounting。</p>
+<p>这里也需要进行处理，可以不开启kmem accounting， 或者通过命令行参数来控制是否开启。</p>
+<p>kubernetes社区也有issue讨论这个问题：<a href="https://github.com/kubernetes/kubernetes/issues/70324" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/70324</a></p>
+<p>但是目前还没有结论。我们TKE先直接把这部分代码注释掉了，不开启kmem accounting。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjq99ig0p00029dn9qapomvgc" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2018/11/19/kernel-parameters-and-container/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">给容器设置内核参数</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2018/12/29/cgroup-leaking/">Cgroup泄漏--潜藏在你的集群中</a>
+          </li>
+        
+          <li>
+            <a href="/2018/11/19/kernel-parameters-and-container/">给容器设置内核参数</a>
+          </li>
+        
+          <li>
+            <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
+          </li>
+        
+          <li>
+            <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2018 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
