@@ -1,5 +1,5 @@
 ---
-title: NodePort, Ingress, LB直通Pod性能测试对比
+title: NodePort, svc, LB直通Pod性能测试对比
 date: 2018/11/06 15:45:37
 ---
 
@@ -11,8 +11,8 @@ date: 2018/11/06 15:45:37
 目前基于k8s 服务的外网访问方式有以下几种：
 
 1. NodePort  
-2. Ingress (如社区版的nginx ingress)
-3. 自研 LB -> Pod （比如pod ip 作为 nginx 的 upstream）
+2. svc(通过k8s 的clusterip 访问)
+3. 自研 LB -> Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）
 
 其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。
 
@@ -86,7 +86,7 @@ date: 2018/11/06 15:45:37
 | 3    | 10    | 4k    | 82752 |
 | 4    | 10    | 100k  | 7743  |
 
-5. 模拟测试Nginx ingress 场景。 wrk -> nginx -> ClusterIP -> Pod
+5. wrk -> nginx -> ClusterIP -> Pod
 
 | 测试用例 | Pod 数 | 数据包大小 | 平均QPS |
 | ---- | ----- | ----- | ----- |
@@ -113,8 +113,8 @@ date: 2018/11/06 15:45:37
 ### 4. 测试结论
 
 1. 在一个pod 的情况下（4k 或者100 数据包），3中网络方案差别不大，QPS 差距在3% 以内。
-2. 在10个pod，4k 数据包情况下，lb->pod 和 nginx ingress 差距不大，NodePort 损失近7% 左右。
-3. 10个Pod, 100k 数据包的情况下，lb->pod 和 nginx ingress 差距不大，NodePort 损失近 25% 
+2. 在10个pod，4k 数据包情况下，lb->pod 和 svc 差距不大，NodePort 损失近7% 左右。
+3. 10个Pod, 100k 数据包的情况下，lb->pod 和 svc 差距不大，NodePort 损失近 25% 
 
 ### 5. 附录
 
