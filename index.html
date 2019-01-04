@@ -148,7 +148,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjq99rffo0002beu1vajgh2c2" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjqhvdpen0002arv6kgtovbk0" class="article-share-link">Share</a>
       
       
     </footer>
@@ -264,7 +264,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjq99rffz0005beu10gp874qf" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjqhvdpey0005arv6c8knn88l" class="article-share-link">Share</a>
       
       
     </footer>
@@ -274,9 +274,9 @@
 
 
   
-    <article id="post-NodePort-Ingress-LB直通容器性能测试对比" class="article article-type-post" itemscope="" itemprop="blogPost">
+    <article id="post-NodePort-SVC-LB直通容器性能测试对比" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
-    <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" class="article-date">
+    <a href="/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" class="article-date">
   <time datetime="2018-11-06T07:45:37.000Z" itemprop="datePublished">2018-11-06</time>
 </a>
     
@@ -288,7 +288,7 @@
         
   
     <h1 itemprop="name">
-      <a class="article-title" href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+      <a class="article-title" href="/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/">NodePort, svc, LB直通Pod性能测试对比</a>
     </h1>
   
 
@@ -300,8 +300,8 @@
 <h3 id="1-测试背景："><a href="#1-测试背景：" class="headerlink" title="1. 测试背景："></a>1. 测试背景：</h3><p>目前基于k8s 服务的外网访问方式有以下几种：</p>
 <ol>
 <li>NodePort  </li>
-<li>Ingress (如社区版的nginx ingress)</li>
-<li>自研 LB -&gt; Pod （比如pod ip 作为 nginx 的 upstream）</li>
+<li>svc(通过k8s 的clusterip 访问)</li>
+<li>自研 LB -&gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）</li>
 </ol>
 <p>其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。</p>
 <h3 id="2-测试方案"><a href="#2-测试方案" class="headerlink" title="2. 测试方案"></a>2. 测试方案</h3><p>为了做到测试的准确性和全面性，我们提供以下测试工具和测试数据：</p>
@@ -413,7 +413,7 @@
 </tbody>
 </table>
 <ol start="5">
-<li>模拟测试Nginx ingress 场景。 wrk -&gt; nginx -&gt; ClusterIP -&gt; Pod</li>
+<li>wrk -&gt; nginx -&gt; ClusterIP -&gt; Pod</li>
 </ol>
 <table>
 <thead>
@@ -494,8 +494,8 @@
 <p>之间，压力都在网络消耗上，没有到达服务后端。</p>
 <h3 id="4-测试结论"><a href="#4-测试结论" class="headerlink" title="4. 测试结论"></a>4. 测试结论</h3><ol>
 <li>在一个pod 的情况下（4k 或者100 数据包），3中网络方案差别不大，QPS 差距在3% 以内。</li>
-<li>在10个pod，4k 数据包情况下，lb-&gt;pod 和 nginx ingress 差距不大，NodePort 损失近7% 左右。</li>
-<li>10个Pod, 100k 数据包的情况下，lb-&gt;pod 和 nginx ingress 差距不大，NodePort 损失近 25% </li>
+<li>在10个pod，4k 数据包情况下，lb-&gt;pod 和 svc 差距不大，NodePort 损失近7% 左右。</li>
+<li>10个Pod, 100k 数据包的情况下，lb-&gt;pod 和 svc 差距不大，NodePort 损失近 25% </li>
 </ol>
 <h3 id="5-附录"><a href="#5-附录" class="headerlink" title="5. 附录"></a>5. 附录</h3><ol>
 <li>nginx 配置</li>
@@ -505,7 +505,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/" data-id="cjq99rffl0001beu1fmog9vr8" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjqhvdpek0001arv6cmvu0lnq" class="article-share-link">Share</a>
       
       
     </footer>
@@ -625,7 +625,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjq99rffy0004beu1ffploo8j" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjqhvdpex0004arv69vqdl0ng" class="article-share-link">Share</a>
       
       
     </footer>
@@ -717,7 +717,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjq99rffd0000beu1bdg31xi7" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjqhvdpee0000arv6xojacr4c" class="article-share-link">Share</a>
       
       
     </footer>
@@ -760,7 +760,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjq99rffp0003beu1hy6oj2uz" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjqhvdpeo0003arv6ecyjkgfh" class="article-share-link">Share</a>
       
       
     </footer>
@@ -809,7 +809,7 @@
           </li>
         
           <li>
-            <a href="/2018/11/06/NodePort-Ingress-LB直通容器性能测试对比/">NodePort, Ingress, LB直通Pod性能测试对比</a>
+            <a href="/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/">NodePort, svc, LB直通Pod性能测试对比</a>
           </li>
         
           <li>
@@ -832,7 +832,7 @@
   
   <div class="outer">
     <div id="footer-info" class="inner">
-      &copy; 2018 腾讯云容器团队<br>
+      &copy; 2019 腾讯云容器团队<br>
       Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>
