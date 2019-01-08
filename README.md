@@ -1,5 +1,8 @@
 # Tencent Cloud Container Team Technology Blog
 
+## 如何加入该组织
+通过企业微信把github帐号发给zhiguohong。对方发出邀请以后，github会发送一份邮件到你的github帐号绑定的邮箱，打开邮件进行确认即可
+
 ## 如何发布一篇文章到团队博客
 1. 编辑md格式文章。注意在文章的开头加上一下内容：
 ```
