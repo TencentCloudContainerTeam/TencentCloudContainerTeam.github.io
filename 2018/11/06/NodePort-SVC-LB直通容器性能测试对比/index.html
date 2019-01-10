@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   svc(通过k8s 的clusterip 访问) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2019-01-04T10:01:11.720Z">
+<meta property="og:updated_time" content="2019-01-10T02:23:14.823Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="NodePort, svc, LB直通Pod性能测试对比">
 <meta name="twitter:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   svc(通过k8s 的clusterip 访问) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这">
@@ -296,7 +296,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjqhvdpek0001arv6cmvu0lnq" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjqpznvyt0001biqhbyfcwit9" class="article-share-link">Share</a>
       
       
     </footer>
@@ -341,7 +341,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -352,6 +352,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/01/10/k8s-traffic-copy/">Kubernetes 流量复制方案</a>
+          </li>
         
           <li>
             <a href="/2018/12/29/cgroup-leaking/">Cgroup泄漏--潜藏在你的集群中</a>
@@ -367,10 +371,6 @@
         
           <li>
             <a href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
-          </li>
-        
-          <li>
-            <a href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
           </li>
         
       </ul>
