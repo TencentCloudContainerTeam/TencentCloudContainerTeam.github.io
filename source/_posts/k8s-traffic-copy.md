@@ -12,7 +12,7 @@ date: 2019/01/10 10:17:37
 
 我们需要一个流量复制方案, 将现网流量复制到预发布/测试环境
 
-![流量复制示意](./res/k8s-traffic-copy/traffic-copy-diagram.png)
+![流量复制示意](https://github.com/TencentCloudContainerTeam/TencentCloudContainerTeam.github.io/raw/develop/source/_posts/res/k8s-traffic-copy/traffic-copy-diagram.png)
 
 ### 期望
 
@@ -23,7 +23,7 @@ date: 2019/01/10 10:17:37
 
 # 方案
 
-![Kubernetes 流量复制方案](./res/k8s-traffic-copy/k8s-traffic-copy-diagram.png)
+![Kubernetes 流量复制方案](https://github.com/TencentCloudContainerTeam/TencentCloudContainerTeam.github.io/raw/develop/source/_posts/res/k8s-traffic-copy/k8s-traffic-copy-diagram.png)
 
 - 承载入口流量的 Pod 新增一个 `Nginx 容器` 接管流量
 - [Nginx Mirror](http://nginx.org/en/docs/http/ngx_http_mirror_module.html) 模块会将流量复制一份并 proxy 到指定 URL (测试环境)
@@ -44,9 +44,9 @@ PS: 下文假定读者了解
 
 使用 Nginx 官方镜像便已经预装了 Mirror 插件
 
-`docker pull nginx`
+即: `docker pull nginx`
 
-> `yum install nginx` 安装的版本貌似没有 Mirror 插件的哦, 需要自己装
+`yum install nginx` 安装的版本貌似没有 Mirror 插件的哦, 需要自己装
 
 ### Nginx ConfigMap
 
@@ -104,7 +104,7 @@ data:
 
 其中重点部分如下:
 
-![](./res/k8s-traffic-copy/nginx-config.png)
+![](https://github.com/TencentCloudContainerTeam/TencentCloudContainerTeam.github.io/raw/develop/source/_posts/res/k8s-traffic-copy/nginx-config.png)
 
 ### 业务方容器 + Nginx Mirror
 
@@ -286,7 +286,7 @@ entrance:
 
 流量复制到测试环境时, 尽量使用内网负载均衡, 为了成本, 安全及性能方面的考虑
 
-![LB-inner-config](./res/k8s-traffic-copy/lb-inner.png)
+![LB-inner-config](https://github.com/TencentCloudContainerTeam/TencentCloudContainerTeam.github.io/raw/develop/source/_posts/res/k8s-traffic-copy/lb-inner.png)
 
 # 总结
 
