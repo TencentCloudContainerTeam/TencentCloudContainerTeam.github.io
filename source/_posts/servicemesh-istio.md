@@ -208,12 +208,14 @@ Istio来自希腊语，英文意思是「sail」, 意为「启航」
 ## 2.1 Istio 架构
 
 <img width="90%" src="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg">
-<center>Istio Architecture（图片来自<a href="https://istio.io/docs/concepts/what-is-istio/">Isio官网文档</a>)</center><br>
+<center>Istio Architecture（图片来自<a href="https://istio.io/docs/concepts/what-is-istio/">Isio官网文档</a>)</center><br/>
 
 * 数据面
+
   * Sidecar
 
 * 控制面
+
   * Pilot：服务发现、流量管理
   * Mixer：访问控制、遥测
   * Citadel：终端用户认证、流量加密
@@ -239,7 +241,7 @@ Istio来自希腊语，英文意思是「sail」, 意为「启航」
 以下是Istio官网经典的 BookInfo Demo, 这是一个多语言组成的异构微服务系统:
 
 <img width="80%" src="https://istio.io/docs/examples/bookinfo/withistio.svg">
-<center>Bookinfo Application（图片来自<a href="https://istio.io/docs/examples/bookinfo/">Isio官网文档</a>)</center><br>
+<center>Bookinfo Application（图片来自<a href="https://istio.io/docs/examples/bookinfo/">Isio官网文档</a>)</center><br/>
 
 下面我将现场给大家进行演示, 从demo安装开始, 并体验一下istio的流控功能:
 
@@ -922,7 +924,7 @@ Envoy 原生支持http 链路跟踪:
 ## 4.1 Pilot 架构
 
 <img src="https://preliminary.istio.io/docs/concepts/traffic-management/PilotAdapters.svg">
-<center>Pilot Architecture（图片来自<a href="https://istio.io/docs/concepts/traffic-management/">Isio官网文档</a>)</center><br>
+<center>Pilot Architecture（图片来自<a href="https://istio.io/docs/concepts/traffic-management/">Isio官网文档</a>)</center><br/>
 
 * Rules API: 对外封装统一的 API，供服务的开发者或者运维人员调用，可以用于流量控制。
 * Envoy API: 对内封装统一的 API，供 Envoy 调用以获取注册信息、流量控制信息等。
@@ -1020,7 +1022,7 @@ Istio 没有无降级处理支持: Istio可以提高网格中服务的可靠性�
 ## 4.4 Mixer 架构
 
 <img src="https://istio.io/docs/concepts/policies-and-telemetry/topology-without-cache.svg">
-<center>Mixer Topology（图片来自<a href="https://istio.io/docs/concepts/policies-and-telemetry/">Isio官网文档</a>)</center><br>
+<center>Mixer Topology（图片来自<a href="https://istio.io/docs/concepts/policies-and-telemetry/">Isio官网文档</a>)</center><br/>
 
 Istio 的四大功能点连接, 安全, 控制, 观察, 其中「控制」和「观察」的功能主要都是由Mixer组件来提供, Mixer 在Istio中角色:
 
