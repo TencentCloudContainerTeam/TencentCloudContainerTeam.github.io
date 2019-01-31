@@ -210,13 +210,13 @@ Istio来自希腊语，英文意思是「sail」, 意为「启航」
 <img width="90%" src="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg">
 <center>Istio Architecture（图片来自<a href="https://istio.io/docs/concepts/what-is-istio/">Isio官网文档</a>)</center>
 
-* 数据面
-  * Sidecar
+- 数据面
+  - Sidecar
 
-* 控制面
-  * Pilot：服务发现、流量管理
-  * Mixer：访问控制、遥测
-  * Citadel：终端用户认证、流量加密
+- 控制面
+  - Pilot：服务发现、流量管理
+  - Mixer：访问控制、遥测
+  - Citadel：终端用户认证、流量加密
 
 ---
 
