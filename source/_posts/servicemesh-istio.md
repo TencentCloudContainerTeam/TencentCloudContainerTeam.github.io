@@ -135,7 +135,7 @@ Sidecar(有时会叫做agent) 在原有的客户端和服务端之间加多了�
 
 * 2017 年 12 月 5 日，Conduit 0.1.0 版本发布
 
-Envoy 和 Linkerd 都是在数据面上的实现, 属于同一个层面的竞争, 是用 C++ 语言实现的，在性能和资源消耗上要比采用 Scala 语言实现的 Linkerd 小，这一点对于延迟敏感型和资源敏的服务尤为重要.
+Envoy 和 Linkerd 都是在数据面上的实现, 属于同一个层面的竞争, 前者是用 C++ 语言实现的，在性能和资源消耗上要比采用 Scala 语言实现的 Linkerd 小，这一点对于延迟敏感型和资源敏的服务尤为重要.
 
 Envoy 对 作为 Istio 的标准数据面实现, 其最主要的贡献是提供了一套[标准数据面API](https://github.com/envoyproxy/data-plane-api/blob/master/API_OVERVIEW.md), 将服务信息和流量规则下发到数据面的sidecar中, 另外Envoy还支持热重启. Istio早期采用了Envoy v1 API，目前的版本中则使用V2 API，V1已被废弃.
 
