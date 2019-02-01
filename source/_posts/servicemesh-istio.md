@@ -145,6 +145,8 @@ Envoy 对 作为 Istio 的标准数据面实现, 其最主要的贡献是提供�
 
 Conduit 的整体架构和 Istio 一致，借鉴了 Istio 数据平面 + 控制平面的设计，而且选择了 Rust 编程语言来实现数据平面，以达成 Conduit 宣称的更轻、更快和超低资源占用.
 
+<center>(参考: 敖小剑 <a href="https://skyao.io/publication/201801-service-mesh-2017-summary/">Service Mesh年度总结：群雄逐鹿烽烟起</a>)</center>
+
 ---
 
 ## 1.8 似曾相识的竞争格局
@@ -1115,7 +1117,7 @@ Kubernetes 本身已经很复杂, Istio 为了更高层控制的抽象, 又增�
 
 参考资料:
 
-* [Service Mesh发展史](https://istio.cn/t/topic/54)
+* [servicemesher 中文社区](http://www.servicemesher.com/)
 * [Why You Should Care About Istio Gateways](https://thenewstack.io/why-you-should-care-about-istio-gateways/)
 * [Pattern: Service Mesh](http://philcalcado.com/2017/08/03/pattern_service_mesh.html)
 * [Mixer Out Of Process Adapter Dev Guide](https://github.com/istio/istio/wiki/Mixer-Out-Of-Process-Adapter-Dev-Guide)
