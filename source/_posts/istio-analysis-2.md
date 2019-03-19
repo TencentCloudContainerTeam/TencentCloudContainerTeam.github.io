@@ -3,7 +3,7 @@ title: istio 庖丁解牛(二) sidecar injector
 date: 2019/03/19 15:30:00
 ---
 
-作者: [钟华](https://imfox.me/)
+作者: [钟华](https://imfox.io/)
 
 今天我们分析下istio-sidecar-injector 组件:
 
