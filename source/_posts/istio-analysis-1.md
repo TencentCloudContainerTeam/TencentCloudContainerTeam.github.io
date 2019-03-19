@@ -40,9 +40,9 @@ prometheus-66b7689b97-w9glt                   1/1       Running
 
 将istio系统组件细化到进程级别, 大概是这个样子:
 
-![](https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3tejlzaj315m0u0qv6.jpg)
+![](https://ws3.sinaimg.cn/large/006tKfTcgy1g187gshs79j315m0u0qct.jpg)
 
-<a href="https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3wp5comj315m0u0kjr.jpg" target="_blank">查看高清原图</a>
+<a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a>
 
 Service Mesh 的Sidecar 模式要求对数据面的用户Pod进行代理的注入, 注入的代理容器会去处理服务治理领域的各种「脏活累活」, 使得用户容器可以专心处理业务逻辑.
 

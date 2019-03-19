@@ -7,9 +7,9 @@ date: 2019/03/19 15:30:00
 
 今天我们分析下istio-sidecar-injector 组件:
 
-![image-20190319105935249](https://ws1.sinaimg.cn/large/006tKfTcgy1g17x6h2bzzj316f0u0wwn.jpg)
+![image-20190319105935249](https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg)
 
-<a href="https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3wp5comj315m0u0kjr.jpg" target="_blank">查看高清原图</a>
+<a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a>
 
 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:
 
@@ -21,7 +21,7 @@ date: 2019/03/19 15:30:00
 - 名为`istio-init`的initContainer: 通过配置iptables来劫持Pod中的流量
 - 名为`istio-proxy`的sidecar容器: 两个进程pilot-agent和envoy, pilot-agent 进行初始化并启动envoy
 
-![](https://ws3.sinaimg.cn/large/006tKfTcgy1g14nv8w2vzj30wq0grtbv.jpg)
+![](https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg)
 
 ------
 
