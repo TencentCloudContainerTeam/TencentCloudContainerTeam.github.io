@@ -87,8 +87,8 @@
       
         <p>作者: <a href="https://imfox.me/" target="_blank" rel="noopener">钟华</a></p>
 <p>今天我们分析下istio-sidecar-injector 组件:</p>
-<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g17x6h2bzzj316f0u0wwn.jpg" alt="image-20190319105935249"></p>
-<p><a href="https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3wp5comj315m0u0kjr.jpg" target="_blank">查看高清原图</a></p>
+<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg" alt="image-20190319105935249"></p>
+<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a></p>
 <p>用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:</p>
 <ul>
 <li>自动注入: 利用 <a href="https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/" target="_blank" rel="noopener">Kubernetes Dynamic Admission Webhooks</a> 对 新建的pod 进行注入: initContainer + sidecar</li>
@@ -99,7 +99,7 @@
 <li>名为<code>istio-init</code>的initContainer: 通过配置iptables来劫持Pod中的流量</li>
 <li>名为<code>istio-proxy</code>的sidecar容器: 两个进程pilot-agent和envoy, pilot-agent 进行初始化并启动envoy</li>
 </ul>
-<p><img src="https://ws3.sinaimg.cn/large/006tKfTcgy1g14nv8w2vzj30wq0grtbv.jpg" alt=""></p>
+<p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg" alt=""></p>
 <hr>
 <h2 id="1-Dynamic-Admission-Control"><a href="#1-Dynamic-Admission-Control" class="headerlink" title="1. Dynamic Admission Control"></a>1. Dynamic Admission Control</h2><p>kubernetes 的准入控制(Admission Control)有2种:</p>
 <ul>
@@ -182,7 +182,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjtf7fafe0005cbz2hzba8x8p" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjtfk1axs0005cnu6cy4hnjbt" class="article-share-link">Share</a>
       
       
     </footer>
@@ -222,8 +222,8 @@
 <p>如果安装了grafana, prometheus, kiali, jaeger等组件的情况下, 一个完整的控制面组件包括以下pod:</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">% kubectl -n istio-system get pod</span><br><span class="line">NAME                                          READY     STATUS</span><br><span class="line">grafana-5f54556df5-s4xr4                      1/1       Running</span><br><span class="line">istio-citadel-775c6cfd6b-8h5gt                1/1       Running</span><br><span class="line">istio-galley-675d75c954-kjcsg                 1/1       Running</span><br><span class="line">istio-ingressgateway-6f7b477cdd-d8zpv         1/1       Running</span><br><span class="line">istio-pilot-7dfdb48fd8-92xgt                  2/2       Running</span><br><span class="line">istio-policy-544967d75b-p6qkk                 2/2       Running</span><br><span class="line">istio-sidecar-injector-5f7894f54f-w7f9v       1/1       Running</span><br><span class="line">istio-telemetry-777876dc5d-msclx              2/2       Running</span><br><span class="line">istio-tracing-5fbc94c494-558fp                1/1       Running</span><br><span class="line">kiali-7c6f4c9874-vzb4t                        1/1       Running</span><br><span class="line">prometheus-66b7689b97-w9glt                   1/1       Running</span><br></pre></td></tr></table></figure>
 <p>将istio系统组件细化到进程级别, 大概是这个样子:</p>
-<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3tejlzaj315m0u0qv6.jpg" alt=""></p>
-<p><a href="https://ws1.sinaimg.cn/large/006tKfTcgy1g0z3wp5comj315m0u0kjr.jpg" target="_blank">查看高清原图</a></p>
+<p><img src="https://ws3.sinaimg.cn/large/006tKfTcgy1g187gshs79j315m0u0qct.jpg" alt=""></p>
+<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a></p>
 <p>Service Mesh 的Sidecar 模式要求对数据面的用户Pod进行代理的注入, 注入的代理容器会去处理服务治理领域的各种「脏活累活」, 使得用户容器可以专心处理业务逻辑.</p>
 <p>从上图可以看出, Istio 控制面本身就是一个复杂的微服务系统, 该系统包含多个组件Pod, 每个组件 各司其职, 既有单容器Pod, 也有多容器Pod, 既有单进程容器, 也有多进程容器,   每个组件会调用不同的命令, 各组件之间会通过RPC进行协作, 共同完成对数据面用户服务的管控.</p>
 <hr>
@@ -410,7 +410,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjtf7fafc0004cbz2nvown3x9" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjtfk1axq0004cnu698wv9g3g" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1109,7 +1109,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjtf7fag70009cbz2flyo06de" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjtfk1ayl0009cnu61ejmu5jg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1196,7 +1196,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjtf7fafq0007cbz2h3gvt8c3" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjtfk1axw0007cnu6gsy9uhhz" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1291,7 +1291,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjtf7faet0002cbz2ls6k1yuj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjtfk1ax90002cnu6kg49st45" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1407,7 +1407,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjtf7fafr0008cbz2ul9waowq" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjtfk1axy0008cnu6jbc3zcoj" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1648,7 +1648,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjtf7faeq0001cbz2b89q2kkh" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjtfk1ax60001cnu6kxv8v3xx" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1768,7 +1768,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjtf7fafo0006cbz2du6fbfyb" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjtfk1axu0006cnu6ut8z8iv9" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1860,7 +1860,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjtf7faeg0000cbz2omjl7628" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjtfk1aww0000cnu6qoy1a5zn" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1903,7 +1903,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjtf7faev0003cbz25qi0kcpw" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjtfk1axb0003cnu6cp9i300j" class="article-share-link">Share</a>
       
       
     </footer>
