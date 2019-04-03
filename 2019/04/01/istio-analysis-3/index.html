@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>istio 庖丁解牛(三) galley | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 钟华 今天我们来解析istio控制面组件Galley. Galley Pod是一个单容器单进程组件, 没有sidecar, 结构独立, 职责明确.  查看高清原图 前不久istio 1.1 版本正式发布, 其中istio的配置管理机制有较大的改进, 以下是1.1 release note 中部分说明:  Added Galley as the primary configuration i">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="istio 庖丁解牛(三) galley">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 钟华 今天我们来解析istio控制面组件Galley. Galley Pod是一个单容器单进程组件, 没有sidecar, 结构独立, 职责明确.  查看高清原图 前不久istio 1.1 版本正式发布, 其中istio的配置管理机制有较大的改进, 以下是1.1 release note 中部分说明:  Added Galley as the primary configuration i">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://ws4.sinaimg.cn/large/006tKfTcgy1g1maoldl74j31850u049x.jpg">
+<meta property="og:image" content="https://ws3.sinaimg.cn/large/006tKfTcgy1g1mbphtde5j31d20swae2.jpg">
+<meta property="og:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g1mcwsf5ggj30sz0ecjt4.jpg">
+<meta property="og:image" content="https://ws2.sinaimg.cn/large/006tKfTcgy1g1n7omb7vrj30uk0u0452.jpg">
+<meta property="og:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g1mzi3oe9xj31r10u0qgp.jpg">
+<meta property="og:image" content="https://imfox.io/assets/images/istio-a/galley_uml.png">
+<meta property="og:updated_time" content="2019-04-03T09:00:33.566Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="istio 庖丁解牛(三) galley">
+<meta name="twitter:description" content="作者: 钟华 今天我们来解析istio控制面组件Galley. Galley Pod是一个单容器单进程组件, 没有sidecar, 结构独立, 职责明确.  查看高清原图 前不久istio 1.1 版本正式发布, 其中istio的配置管理机制有较大的改进, 以下是1.1 release note 中部分说明:  Added Galley as the primary configuration i">
+<meta name="twitter:image" content="https://ws4.sinaimg.cn/large/006tKfTcgy1g1maoldl74j31850u049x.jpg">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-istio-analysis-3" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/04/01/istio-analysis-3/" class="article-date">
+  <time datetime="2019-04-01T07:30:00.000Z" itemprop="datePublished">2019-04-01</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      istio 庖丁解牛(三) galley
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imfox.io/" target="_blank" rel="noopener">钟华</a></p>
+<p>今天我们来解析istio控制面组件Galley. Galley Pod是一个单容器单进程组件, 没有sidecar, 结构独立, 职责明确.</p>
+<p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1g1maoldl74j31850u049x.jpg" alt=""></p>
+<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a></p>
+<p>前不久istio 1.1 版本正式发布, 其中istio的配置管理机制有较大的改进, 以下是<a href="https://istio.io/about/notes/1.1/" target="_blank" rel="noopener">1.1 release note</a> 中部分说明:</p>
+<blockquote>
+<p>Added <a href="https://istio.io/docs/concepts/what-is-istio/#galley" target="_blank" rel="noopener">Galley</a> as the primary configuration ingestion and distribution mechanism within Istio. It provides a robust model to validate, transform, and distribute configuration states to Istio components insulating the Istio components from Kubernetes details. Galley uses the <a href="https://github.com/istio/api/tree/release-1.1/mcp" target="_blank" rel="noopener">Mesh Configuration Protocol (MCP)</a> to interact with components</p>
+</blockquote>
+<p>Galley 原来仅负责进行配置验证, 1.1 后升级为整个控制面的配置管理中心, 除了继续提供配置验证功能外, Galley还负责配置的管理和分发, Galley 使用 <strong>网格配置协议</strong>(Mesh Configuration Protocol) 和其他组件进行配置的交互.</p>
+<p>今天对Galley的剖析大概有以下方面:</p>
+<ul>
+<li>Galley 演进的背景</li>
+<li>Galley 配置验证功能</li>
+<li>MCP 协议</li>
+<li>Galley 配置管理实现浅析</li>
+</ul>
+<hr>
+<h2 id="Galley-演进的背景"><a href="#Galley-演进的背景" class="headerlink" title="Galley 演进的背景"></a>Galley 演进的背景</h2><p>在 k8s 场景下, 「配置(Configuration)」一词主要指yaml编写的Resource Definition, 如service、pod, 以及扩展的CRD( Custom Resource Definition), 如 istio的 VirtualService、DestinationRule 等.</p>
+<p><strong>本文中「配置」一词可以等同于 k8s Resource Definition + istio CRD</strong></p>
+<p>声明式 API 是 Kubernetes 项目编排能力“赖以生存”的核心所在, 而「配置」是声明式 API的承载方式.</p>
+<blockquote>
+<p>Istio 项目的设计与实现，其实都依托于 Kubernetes 的声明式 API 和它所提供的各种编排能力。可以说，Istio 是在 Kubernetes 项目使用上的一位“集大成者”</p>
+<p>Istio 项目有多火热，就说明 Kubernetes 这套“声明式 API”有多成功</p>
+</blockquote>
+<p>k8s 内置了几十个Resources, istio 创造了50多个CRD, 其复杂度可见一斑, 所以有人说面向k8s编程近似于面向yaml编程.</p>
+<p>早期的Galley 仅仅负责对「配置」进行运行时验证, istio 控制面各个组件各自去list/watch 各自关注的「配置」, 以下是istio早期的Configuration flow:</p>
+<p><img src="https://ws3.sinaimg.cn/large/006tKfTcgy1g1mbphtde5j31d20swae2.jpg" alt=""></p>
+<p>越来越多且复杂的「配置」给istio 用户带来了诸多不便, 主要体现在:</p>
+<ul>
+<li>「配置」的缺乏统一管理, 组件各自订阅, 缺乏统一回滚机制, 配置问题难以定位</li>
+<li>「配置」可复用度低, 比如在1.1之前, 每个mixer adpater 就需要定义个新的CRD.</li>
+<li>另外「配置」的隔离, ACL 控制, 一致性, 抽象程度, 序列化等等问题都还不太令人满意.</li>
+</ul>
+<p>随着istio功能的演进, 可预见的istio CRD数量还会继续增加, 社区计划将Galley 强化为istio 「配置」控制层, Galley 除了继续提供「配置」验证功能外, 还将提供配置管理流水线, 包括输入, 转换, 分发, 以及适合istio控制面的「配置」分发协议(MCP).</p>
+<p>本文对Galley的分析基于istio tag 1.1.1 (commit 2b13318)</p>
+<hr>
+<h2 id="Galley-配置验证功能"><a href="#Galley-配置验证功能" class="headerlink" title="Galley 配置验证功能"></a>Galley 配置验证功能</h2><p>在<a href="https://imfox.io/2019/03/19/istio-analysis-2/" target="_blank" rel="noopener">istio 庖丁解牛(二) sidecar injector</a>中我分析了istio-sidecar-injector 如何利用 MutatingWebhook 来实现sidecar注入, Galley 使用了k8s提供的另一个Admission Webhooks: ValidatingWebhook, 来做配置的验证:</p>
+<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g1mcwsf5ggj30sz0ecjt4.jpg" alt=""></p>
+<p>istio 需要一个关于ValidatingWebhook的配置项, 用于告诉k8s api server, 哪些CRD应该发往哪个服务的哪个接口去做验证, 该配置名为istio-galley, 简化的内容如下:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">%kubectl</span> <span class="string">get</span> <span class="string">ValidatingWebhookConfiguration</span> <span class="string">istio-galley</span> <span class="bullet">-oyaml</span></span><br><span class="line"></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">admissionregistration.k8s.io/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">ValidatingWebhookConfiguration</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">istio-galley</span></span><br><span class="line"><span class="attr">webhooks:</span></span><br><span class="line"><span class="attr">- clientConfig:</span></span><br><span class="line">  <span class="string">......</span></span><br><span class="line"><span class="attr">    service:</span></span><br><span class="line"><span class="attr">      name:</span> <span class="string">istio-galley</span></span><br><span class="line"><span class="attr">      namespace:</span> <span class="string">istio-system</span></span><br><span class="line"><span class="attr">      path:</span> <span class="string">/admitpilot</span></span><br><span class="line"><span class="attr">  failurePolicy:</span> <span class="string">Fail</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">pilot.validation.istio.io</span></span><br><span class="line"><span class="attr">  rules:</span></span><br><span class="line">  <span class="string">...pilot关注的CRD...</span></span><br><span class="line"><span class="bullet">    -</span> <span class="string">gateways</span></span><br><span class="line"><span class="bullet">    -</span> <span class="string">virtualservices</span></span><br><span class="line">  <span class="string">......</span></span><br><span class="line"><span class="attr">- clientConfig:</span></span><br><span class="line">  <span class="string">......</span></span><br><span class="line"><span class="attr">    service:</span></span><br><span class="line"><span class="attr">      name:</span> <span class="string">istio-galley</span></span><br><span class="line"><span class="attr">      namespace:</span> <span class="string">istio-system</span></span><br><span class="line"><span class="attr">      path:</span> <span class="string">/admitmixer</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">mixer.validation.istio.io</span></span><br><span class="line"><span class="attr">  rules:</span></span><br><span class="line">  <span class="string">...mixer关注的CRD...</span></span><br><span class="line"><span class="bullet">    -</span> <span class="string">rules</span></span><br><span class="line"><span class="bullet">    -</span> <span class="string">metrics</span></span><br><span class="line">  <span class="string">......</span></span><br></pre></td></tr></table></figure>
+<p>可以看到, 该配置将pilot和mixer关注的CRD, 分别发到了服务istio-galley的<code>/admitpilot</code>和<code>/admitmixer</code>, 在Galley 源码中可以很容易找到这2个path Handler的入口:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">h.HandleFunc(<span class="string">"/admitpilot"</span>, wh.serveAdmitPilot)</span><br><span class="line">h.HandleFunc(<span class="string">"/admitmixer"</span>, wh.serveAdmitMixer)</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="MCP协议"><a href="#MCP协议" class="headerlink" title="MCP协议"></a>MCP协议</h2><p>MCP 提供了一套配置订阅和分发的API, 在MCP中, 可以抽象为以下模型:</p>
+<ul>
+<li>source: 「配置」的提供端, 在Istio中Galley 即是source</li>
+<li>sink: 「配置」的消费端, 在isito中典型的sink包括Pilot和Mixer组件</li>
+<li>resource: source和sink关注的资源体, 也就是isito中的「配置」</li>
+</ul>
+<p>当sink和source之间建立了对某些resource的订阅和分发关系后, source 会将指定resource的变化信息推送给sink, sink端可以选择接受或者不接受resource更新(比如格式错误的情况), 并对应返回ACK/NACK 给source端.</p>
+<p>MCP 提供了gRPC 的实现, 实现代码参见: <a href="https://github.com/istio/api/tree/master/mcp/v1alpha1" target="_blank" rel="noopener">https://github.com/istio/api/tree/master/mcp/v1alpha1</a>,</p>
+<p>其中包括2个services: <code>ResourceSource</code> 和 <code>ResourceSink</code>,  通常情况下,  source 会作为 gRPC的server 端, 提供<code>ResourceSource</code>服务,  sink 作为 gRPC的客户端, sink主动发起请求连接source; 不过有的场景下, source 会作为gRPC的client端, sink作为gRPC的server端提供<code>ResourceSink</code>服务, source主动发起请求连接sink.</p>
+<p>以上2个服务, 内部功能逻辑都是一致的, 都是sink需要订阅source管理的resource, 区别仅仅是哪端主动发起的连接请求.</p>
+<p>具体到istio的场景中:</p>
+<ul>
+<li>在单k8s集群的istio mesh中, Galley默认实现了<code>ResourceSource</code> service, Pilot和Mixer会作为该service的client主动连接Galley进行配置订阅.</li>
+<li>Galley 可以配置去主动连接远程的其他sink, 比如说在多k8s集群的mesh中, 主集群中的Galley可以为多个集群的Pilot/Mixer提供配置管理, 跨集群的Pilot/Mixer无法主动连接主集群Galley, 这时候Galley就可以作为gRPC的client 主动发起连接, 跨集群的Pilot/Mixer作为gRPC server 实现<code>ResourceSink</code>服务,</li>
+</ul>
+<p>两种模式的示意图如下:</p>
+<p><img src="https://ws2.sinaimg.cn/large/006tKfTcgy1g1n7omb7vrj30uk0u0452.jpg" alt=""></p>
+<hr>
+<h2 id="Galley-配置管理实现浅析"><a href="#Galley-配置管理实现浅析" class="headerlink" title="Galley 配置管理实现浅析"></a>Galley 配置管理实现浅析</h2><p>galley 进程对外暴露了若干服务, 最重要的就是基于gRPC的mcp服务, 以及http的验证服务, 除此之外还提供了 prometheus exporter接口以及Profiling接口:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> serverArgs.EnableServer &#123; <span class="comment">// 配置管理服务</span></span><br><span class="line">	<span class="keyword">go</span> server.RunServer(serverArgs, livenessProbeController, readinessProbeController)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">if</span> validationArgs.EnableValidation &#123; <span class="comment">// 验证服务</span></span><br><span class="line">	<span class="keyword">go</span> validation.RunValidation(validationArgs, kubeConfig, livenessProbeController, readinessProbeController)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 提供 prometheus exporter</span></span><br><span class="line"><span class="keyword">go</span> server.StartSelfMonitoring(galleyStop, monitoringPort)</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> enableProfiling &#123;</span><br><span class="line">    <span class="comment">// 使用包net/http/pprof</span></span><br><span class="line">    <span class="comment">// 通过http server提供runtime profiling数据</span></span><br><span class="line">	<span class="keyword">go</span> server.StartProfiling(galleyStop, pprofPort)</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 开始探针更新</span></span><br><span class="line"><span class="keyword">go</span> server.StartProbeCheck(livenessProbeController, readinessProbeController, galleyStop)</span><br></pre></td></tr></table></figure>
+<p>接下来主要分析下「配置」管理服务的实现:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">go server.RunServer(serverArgs, livenessProbeController, readinessProbeController)</span><br></pre></td></tr></table></figure>
+<p>下面是Galley 配置服务结构示意图:</p>
+<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g1mzi3oe9xj31r10u0qgp.jpg" alt=""></p>
+<p><a href="https://ws2.sinaimg.cn/large/006tKfTcgy1g1n8o76s8yj31r10u0trx.jpg" target="_blank">查看高清原图</a></p>
+<p>从上图可以看到, Galley 配置服务主要包括 Processor 和 负责mcp通信的grpc Server.</p>
+<p>其中 Processor 又由以下部分组成:</p>
+<ul>
+<li>Source:  代表Galley管理的配置的来源</li>
+<li>Handler:  对「配置」事件的处理器</li>
+<li>State: Galley管理的「配置」在内存中状态</li>
+</ul>
+<hr>
+<h3 id="Source"><a href="#Source" class="headerlink" title="Source"></a>Source</h3><p>interface Source 代表istio关注的配置的来源,  其<code>Start</code>方法需要实现对特定资源的变化监听.</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Source to be implemented by a source configuration provider.</span></span><br><span class="line"><span class="keyword">type</span> Source <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Start the source interface, provided the EventHandler. The initial state of the underlying</span></span><br><span class="line">	<span class="comment">// config store should be reflected as a series of Added events, followed by a FullSync event.</span></span><br><span class="line">	Start(handler resource.EventHandler) error</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Stop the source interface. Upon return from this method, the channel should not be accumulating any</span></span><br><span class="line">	<span class="comment">// more events.</span></span><br><span class="line">	Stop()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在Galley中, 有多个Source的实现, 主要包括</p>
+<ul>
+<li><p><code>source/fs.source</code></p>
+</li>
+<li><p><code>source/kube/builtin.source</code></p>
+</li>
+<li><code>source/kube/dynamic.source</code></li>
+<li><code>source/kube.aggregate</code></li>
+</ul>
+<p>其中<code>source/fs</code>代表从文件系统中获取配置, 这种形式常用于开发和测试过程中, 不需要创建实际的k8s CRD, 只需要CRD文件即可, 同时<code>source/fs</code>也是实现了更新watch(使用<a href="https://github.com/howeyc/fsnotify" target="_blank" rel="noopener">https://github.com/howeyc/fsnotify</a>)</p>
+<p><code>source/kube/builtin.source</code>处理k8s 内置的配置来源, 包括<code>Service</code>, <code>Node</code>, <code>Pod</code>, <code>Endpoints</code>等, <code>source/kube/dynamic.source</code>处理其他的istio 关注的CRD, <code>source/kube.aggregate</code>是多个Source 的聚合, 其本身也实现了Source interface:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> aggregate <span class="keyword">struct</span> &#123;</span><br><span class="line">	mu      sync.Mutex</span><br><span class="line">	sources []runtime.Source</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *aggregate)</span> <span class="title">Start</span><span class="params">(handler resource.EventHandler)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	......</span><br><span class="line">	<span class="keyword">for</span> _, source := <span class="keyword">range</span> s.sources &#123;</span><br><span class="line">		<span class="keyword">if</span> err := source.Start(syncHandler); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	......</span><br></pre></td></tr></table></figure>
+<p><code>source/kube/builtin.source</code>、<code>source/kube/dynamic.source</code>本身都包含一个k8s SharedIndexInformer:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// source is a simplified client interface for listening/getting Kubernetes resources in an unstructured way.</span></span><br><span class="line"><span class="keyword">type</span> source <span class="keyword">struct</span> &#123;</span><br><span class="line">	......</span><br><span class="line">	<span class="comment">// SharedIndexInformer for watching/caching resources</span></span><br><span class="line">	informer cache.SharedIndexInformer</span><br><span class="line"></span><br><span class="line">	handler resource.EventHandler</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>二者的<code>Start</code>方法的实现, 正是用到了k8s典型的 Informer+list/watch 模式, 获取关注「配置」的变化事件, 在此不再赘述.</p>
+<p>Source 获得「配置」更新事件后, 会将其推送到Processor 的events chan 中, events 长度为1024,  通过<code>go p.process()</code>, <code>Proccesor</code>的<code>handler</code>会对事件进行异步处理.</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *Processor)</span> <span class="title">Start</span><span class="params">()</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	......</span><br><span class="line">    events := <span class="built_in">make</span>(<span class="keyword">chan</span> resource.Event, <span class="number">1024</span>)</span><br><span class="line">	err := p.source.Start(<span class="function"><span class="keyword">func</span><span class="params">(e resource.Event)</span></span> &#123;</span><br><span class="line">		events &lt;- e</span><br><span class="line">	&#125;)</span><br><span class="line">    ......</span><br><span class="line">	p.events = events</span><br><span class="line"></span><br><span class="line">	<span class="keyword">go</span> p.process()</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *Processor)</span> <span class="title">process</span><span class="params">()</span></span> &#123;</span><br><span class="line">loop:</span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="keyword">select</span> &#123;</span><br><span class="line">		<span class="comment">// Incoming events are received through p.events</span></span><br><span class="line">		<span class="keyword">case</span> e := &lt;-p.events:</span><br><span class="line">			p.processEvent(e)</span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> &lt;-p.state.strategy.Publish:</span><br><span class="line">			scope.Debug(<span class="string">"Processor.process: publish"</span>)</span><br><span class="line">			p.state.publish()</span><br><span class="line"></span><br><span class="line">		<span class="comment">// p.done signals the graceful Shutdown of the processor.</span></span><br><span class="line">		<span class="keyword">case</span> &lt;-p.done:</span><br><span class="line">			scope.Debug(<span class="string">"Processor.process: done"</span>)</span><br><span class="line">			<span class="keyword">break</span> loop</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> p.postProcessHook != <span class="literal">nil</span> &#123;</span><br><span class="line">			p.postProcessHook()</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<hr>
+<h3 id="Handler-和-State"><a href="#Handler-和-State" class="headerlink" title="Handler 和 State"></a>Handler 和 State</h3><p>interface Handler 代表对「配置」变化事件的处理器:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Handler handles an incoming resource event.</span></span><br><span class="line"><span class="keyword">type</span> Handler <span class="keyword">interface</span> &#123;</span><br><span class="line">	Handle(e resource.Event)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在istio中有多个Handler的实现, 典型的有:</p>
+<ul>
+<li>Dispatcher</li>
+<li>State</li>
+</ul>
+<p>Dispatcher 是多个Handler的集合:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">type Dispatcher struct &#123;</span><br><span class="line">	handlers map[resource.Collection][]Handler</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>State 是对Galley的内存中的状态, 包括了Galley 当前持有「配置」的schema、发布策略以及内容快照等:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// State is the in-memory state of Galley.</span></span><br><span class="line"><span class="keyword">type</span> State <span class="keyword">struct</span> &#123;</span><br><span class="line">	name   <span class="keyword">string</span></span><br><span class="line">	schema *resource.Schema</span><br><span class="line"></span><br><span class="line">	distribute  <span class="keyword">bool</span></span><br><span class="line">	strategy    *publish.Strategy</span><br><span class="line">	distributor publish.Distributor</span><br><span class="line"></span><br><span class="line">	config *Config</span><br><span class="line"></span><br><span class="line">	<span class="comment">// version counter is a nonce that generates unique ids for each updated view of State.</span></span><br><span class="line">	versionCounter <span class="keyword">int64</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// entries for per-message-type State.</span></span><br><span class="line">	entriesLock sync.Mutex</span><br><span class="line">	entries     <span class="keyword">map</span>[resource.Collection]*resourceTypeState</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Virtual version numbers for Gateways &amp; VirtualServices for Ingress projected ones</span></span><br><span class="line">	ingressGWVersion   <span class="keyword">int64</span></span><br><span class="line">	ingressVSVersion   <span class="keyword">int64</span></span><br><span class="line">	lastIngressVersion <span class="keyword">int64</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// pendingEvents counts the number of events awaiting publishing.</span></span><br><span class="line">	pendingEvents <span class="keyword">int64</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// lastSnapshotTime records the last time a snapshot was published.</span></span><br><span class="line">	lastSnapshotTime time.Time</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>同时State 也实现了interface <code>Handler</code>, 最终「配置」资源将会作为快照存储到State的<code>distributor</code>中, <code>distributor</code>实际的实现是mcp包中的<code>Cache</code>, 实际会调用mcp中的<code>Cache#SetSnapshot</code>.</p>
+<hr>
+<h3 id="Distributor-、Watcher-和-Cache"><a href="#Distributor-、Watcher-和-Cache" class="headerlink" title="Distributor 、Watcher 和 Cache"></a>Distributor 、Watcher 和 Cache</h3><p>在mcp包中, 有2个interface 值得特别关注: Distributor 和 Watcher</p>
+<p>interface Distributor 定义了「配置」快照存储需要实现的接口, State 最终会调用<code>SetSnapshot</code>将配置存储到快照中.</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Distributor interface allows processor to distribute snapshots of configuration.</span></span><br><span class="line"><span class="keyword">type</span> Distributor <span class="keyword">interface</span> &#123;</span><br><span class="line">	SetSnapshot(name <span class="keyword">string</span>, snapshot sn.Snapshot)</span><br><span class="line"></span><br><span class="line">	ClearSnapshot(name <span class="keyword">string</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>interface Watcher 功能有点类似k8s的 list/watch, Watch方法会注册 mcp sink 的watch 请求和处理函数:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Watcher requests watches for configuration resources by node, last</span></span><br><span class="line"><span class="comment">// applied version, and type. The watch should send the responses when</span></span><br><span class="line"><span class="comment">// they are ready. The watch can be canceled by the consumer.</span></span><br><span class="line"><span class="keyword">type</span> Watcher <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">// Watch returns a new open watch for a non-empty request.</span></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	<span class="comment">// Cancel is an optional function to release resources in the</span></span><br><span class="line">	<span class="comment">// producer. It can be called idempotently to cancel and release resources.</span></span><br><span class="line">	Watch(*Request, PushResponseFunc) CancelWatchFunc</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>struct <code>mcp/snapshot.Cache</code> 同时实现了Distributor 和 Watcher interface:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">type Cache struct &#123;</span><br><span class="line">	mu         sync.RWMutex</span><br><span class="line">	snapshots  map[string]Snapshot</span><br><span class="line">	status     map[string]*StatusInfo</span><br><span class="line">	watchCount int64</span><br><span class="line"></span><br><span class="line">	groupIndex GroupIndexFn</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>mcp 服务端在接口 <code>StreamAggregatedResources</code>和<code>EstablishResourceStream</code>中, 会调用Watch方法, 注册sink连接的watch请求:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">sr := &amp;source.Request&#123;</span><br><span class="line">	SinkNode:    req.SinkNode,</span><br><span class="line">	Collection:  collection,</span><br><span class="line">	VersionInfo: req.VersionInfo,</span><br><span class="line">&#125;</span><br><span class="line">w.cancel = con.watcher.Watch(sr, con.queueResponse)</span><br></pre></td></tr></table></figure>
+<p> <code>mcp/snapshot.Cache</code> 实现了interface Distributor 的<code>SetSnapshot</code>方法, 该方法在State状态变化后会被调用, 该方法会遍历之前watch注册的responseWatch, 并将WatchResponse传递给各个处理方法.</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">// SetSnapshot updates a snapshot for a group.</span><br><span class="line">func (c *Cache) SetSnapshot(group string, snapshot Snapshot) &#123;</span><br><span class="line">	c.mu.Lock()</span><br><span class="line">	defer c.mu.Unlock()</span><br><span class="line"></span><br><span class="line">	// update the existing entry</span><br><span class="line">	c.snapshots[group] = snapshot</span><br><span class="line"></span><br><span class="line">	// trigger existing watches for which version changed</span><br><span class="line">	if info, ok := c.status[group]; ok &#123;</span><br><span class="line">		info.mu.Lock()</span><br><span class="line">		defer info.mu.Unlock()</span><br><span class="line"></span><br><span class="line">		for id, watch := range info.watches &#123;</span><br><span class="line">			version := snapshot.Version(watch.request.Collection)</span><br><span class="line">			if version != watch.request.VersionInfo &#123;</span><br><span class="line">				scope.Infof(&quot;SetSnapshot(): respond to watch %d for %v @ version %q&quot;,</span><br><span class="line">					id, watch.request.Collection, version)</span><br><span class="line"></span><br><span class="line">				response := &amp;source.WatchResponse&#123;</span><br><span class="line">					Collection: watch.request.Collection,</span><br><span class="line">					Version:    version,</span><br><span class="line">					Resources:  snapshot.Resources(watch.request.Collection),</span><br><span class="line">					Request:    watch.request,</span><br><span class="line">				&#125;</span><br><span class="line">				watch.pushResponse(response)</span><br><span class="line"></span><br><span class="line">				// discard the responseWatch</span><br><span class="line">				delete(info.watches, id)</span><br><span class="line"></span><br><span class="line">				scope.Debugf(&quot;SetSnapshot(): watch %d for %v @ version %q complete&quot;,</span><br><span class="line">					id, watch.request.Collection, version)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>提供给Watch的处理函数<code>queueResponse</code>会将WatchResponse放入连接的响应队列, 最终会推送给mcp sink端.</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">// Queue the response for sending in the dispatch loop. The caller may provide</span><br><span class="line">// a nil response to indicate that the watch should be closed.</span><br><span class="line">func (con *connection) queueResponse(resp *WatchResponse) &#123;</span><br><span class="line">	if resp == nil &#123;</span><br><span class="line">		con.queue.Close()</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		con.queue.Enqueue(resp.Collection, resp)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<hr>
+<p>最后上一张Galley mcp 服务相关模型UML:</p>
+<p><img src="https://imfox.io/assets/images/istio-a/galley_uml.png" alt=""></p>
+<p><a href="https://imfox.io/assets/images/istio-a/galley_uml.png" target="_blank">查看高清原图</a></p>
+<p>Galley 源代码展示了面向抽象(interface)编程的好处, Source 是对「配置」数据源的抽象, Distributor 是「配置」快照存储的抽象, Watcher 是对「配置」订阅端的抽象. 抽象的具体实现可以组合起来使用. 另外Galley组件之间也充分解耦, 组件之间的数据通过chan/watcher等流转.</p>
+<p>关于早期 istio 配置管理的演进计划, 可以参考2018年5月 CNCF KubeCon talk <a href="https://www.youtube.com/watch?v=x1Tyw8dFKjI&amp;index=2&amp;t=0s&amp;list=LLQ2StCCdx81xHxHxBO0foGA" target="_blank" rel="noopener">Introduction to Istio Configuration - Joy Zhang</a> (需.翻.墙),  1.1 版本中Galley 也还未完全实现该文中的roadmap, 如 configuration pipeline 等. 未来Galley 还会继续演进.</p>
+<blockquote>
+<p>版权归作者所有, 欢迎转载, 转载请注明出处</p>
+</blockquote>
+<hr>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a href="https://www.youtube.com/watch?v=x1Tyw8dFKjI&amp;index=2&amp;t=0s&amp;list=LLQ2StCCdx81xHxHxBO0foGA" target="_blank" rel="noopener">Introduction to Istio Configuration </a></li>
+<li><a href="https://docs.google.com/document/d/1o2-V4TLJ8fJACXdlsnxKxDv2Luryo48bAhR8ShxE5-k/edit#heading=h.qex63c29z2to" target="_blank" rel="noopener">google doc Mesh Configuration Protocol (MCP)</a></li>
+<li><a href="https://github.com/istio/api/tree/master/mcp" target="_blank" rel="noopener">github Mesh Configuration Protocol (MCP)</a></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cju0zejej0009cfmzqrt2md8i" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2019/03/19/istio-analysis-2/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">istio 庖丁解牛(二) sidecar injector</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/04/01/istio-analysis-3/">istio 庖丁解牛(三) galley</a>
+          </li>
+        
+          <li>
+            <a href="/2019/03/19/istio-analysis-2/">istio 庖丁解牛(二) sidecar injector</a>
+          </li>
+        
+          <li>
+            <a href="/2019/03/11/istio-analysis-1/">istio 庖丁解牛(一) 组件概览</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/31/servicemesh-istio/">Istio 服务网格领域的新王者</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/10/k8s-traffic-copy/">Kubernetes 流量复制方案</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
