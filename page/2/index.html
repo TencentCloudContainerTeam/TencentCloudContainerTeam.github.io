@@ -63,6 +63,126 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-k8s-npc-kr-function" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2018/10/30/k8s-npc-kr-function/" class="article-date">
+  <time datetime="2018-10-30T09:22:24.000Z" itemprop="datePublished">2018-10-30</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2018/10/30/k8s-npc-kr-function/">K8s Network Policy Controller之Kube-router功能介绍</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>Author: <a href="https://github.com/jimmy-zh" target="_blank" rel="noopener">Jimmy Zhang</a> (张浩)</p>
+<h1 id="Network-Policy"><a href="#Network-Policy" class="headerlink" title="Network Policy"></a>Network Policy</h1><p><a href="https://kubernetes.io/docs/concepts/services-networking/network-policies/" target="_blank" rel="noopener">Network Policy</a>是k8s提供的一种资源，用于定义基于pod的网络隔离策略。它描述了一组pod是否可以与其它组pod，以及其它network endpoints进行通信。</p>
+<h1 id="Kube-router"><a href="#Kube-router" class="headerlink" title="Kube-router"></a>Kube-router</h1><ul>
+<li>官网:  <a href="https://www.kube-router.io" target="_blank" rel="noopener">https://www.kube-router.io</a></li>
+<li>项目:  <a href="https://github.com/cloudnativelabs/kube-router" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router</a></li>
+<li>目前最新版本：<a href="https://github.com/cloudnativelabs/kube-router/releases/tag/v0.2.1" target="_blank" rel="noopener">v0.2.1</a></li>
+</ul>
+<p>kube-router项目的三大功能：</p>
+<ul>
+<li>Pod Networking</li>
+<li>IPVS/LVS based service proxy  </li>
+<li>Network Policy Controller </li>
+</ul>
+<p>在腾讯云TKE上，Pod Networking功能由基于IAAS层VPC的高性能容器网络实现，service proxy功能由kube-proxy所支持的ipvs/iptables两种模式实现。建议在TKE上，只使用kube-router的Network Policy功能。</p>
+<h1 id="在TKE上部署kube-router"><a href="#在TKE上部署kube-router" class="headerlink" title="在TKE上部署kube-router"></a>在TKE上部署kube-router</h1><h3 id="腾讯云提供的kube-router版本"><a href="#腾讯云提供的kube-router版本" class="headerlink" title="腾讯云提供的kube-router版本"></a>腾讯云提供的kube-router版本</h3><p>腾讯云PAAS团队提供的镜像”ccr.ccs.tencentyun.com/library/kube-router:v1”基于官方的最新版本：<a href="https://github.com/cloudnativelabs/kube-router/releases/tag/v0.2.1" target="_blank" rel="noopener">v0.2.1</a></p>
+<p>在该项目的开发过程中，腾讯云PAAS团队积极参与社区，持续贡献了一些feature support和bug fix, 列表如下（均已被社区合并）：</p>
+<ul>
+<li><a href="https://github.com/cloudnativelabs/kube-router/pull/488" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router/pull/488</a></li>
+<li><a href="https://github.com/cloudnativelabs/kube-router/pull/498" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router/pull/498</a></li>
+<li><a href="https://github.com/cloudnativelabs/kube-router/pull/527" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router/pull/527</a></li>
+<li><a href="https://github.com/cloudnativelabs/kube-router/pull/529" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router/pull/529</a></li>
+<li><a href="https://github.com/cloudnativelabs/kube-router/pull/543" target="_blank" rel="noopener">https://github.com/cloudnativelabs/kube-router/pull/543</a></li>
+</ul>
+<p>我们会继续贡献社区，并提供腾讯云镜像的版本升级。</p>
+<h3 id="部署kube-router"><a href="#部署kube-router" class="headerlink" title="部署kube-router"></a>部署kube-router</h3><p>Daemonset yaml文件:</p>
+<blockquote>
+<p><a href="https://ask.qcloudimg.com/draft/982360/9wn7eu0bek.zip" target="_blank" rel="noopener">#kube-router-firewall-daemonset.yaml.zip#</a></p>
+</blockquote>
+<p>在<strong>能访问公网</strong>，也能访问TKE集群apiserver的机器上，执行以下命令即可完成kube-router部署。</p>
+<p>如果集群节点开通了公网IP，则可以直接在集群节点上执行以下命令。</p>
+<p>如果集群节点没有开通公网IP, 则可以手动下载和粘贴yaml文件内容到节点, 保存为kube-router-firewall-daemonset.yaml，再执行最后的kubectl create命令。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">wget https://ask.qcloudimg.com/draft/982360/9wn7eu0bek.zip</span><br><span class="line">unzip 9wn7eu0bek.zip</span><br><span class="line">kuebectl create -f kube-router-firewall-daemonset.yaml</span><br></pre></td></tr></table></figure>
+<h3 id="yaml文件内容和参数说明"><a href="#yaml文件内容和参数说明" class="headerlink" title="yaml文件内容和参数说明"></a>yaml文件内容和参数说明</h3><p>kube-router-firewall-daemonset.yaml文件内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: v1</span><br><span class="line">kind: ConfigMap</span><br><span class="line">metadata:</span><br><span class="line">  name: kube-router-cfg</span><br><span class="line">  namespace: kube-system</span><br><span class="line">  labels:</span><br><span class="line">    tier: node</span><br><span class="line">    k8s-app: kube-router</span><br><span class="line">data:</span><br><span class="line">  cni-conf.json: |</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;name&quot;:&quot;kubernetes&quot;,</span><br><span class="line">      &quot;type&quot;:&quot;bridge&quot;,</span><br><span class="line">      &quot;bridge&quot;:&quot;kube-bridge&quot;,</span><br><span class="line">      &quot;isDefaultGateway&quot;:true,</span><br><span class="line">      &quot;ipam&quot;: &#123;</span><br><span class="line">        &quot;type&quot;:&quot;host-local&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">---</span><br><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: DaemonSet</span><br><span class="line">metadata:</span><br><span class="line">  name: kube-router</span><br><span class="line">  namespace: kube-system</span><br><span class="line">  labels:</span><br><span class="line">    k8s-app: kube-router</span><br><span class="line">spec:</span><br><span class="line">  template:</span><br><span class="line">    metadata:</span><br><span class="line">      labels:</span><br><span class="line">        k8s-app: kube-router</span><br><span class="line">      annotations:</span><br><span class="line">        scheduler.alpha.kubernetes.io/critical-pod: &apos;&apos;</span><br><span class="line">    spec:</span><br><span class="line">      containers:</span><br><span class="line">      - name: kube-router</span><br><span class="line">        image: ccr.ccs.tencentyun.com/library/kube-router:v1</span><br><span class="line">        args: [&quot;--run-router=false&quot;, &quot;--run-firewall=true&quot;, &quot;--run-service-proxy=false&quot;, &quot;--kubeconfig=/var/lib/kube-router/kubeconfig&quot;, &quot;--iptables-sync-period=5m&quot;, &quot;--cache-sync-timeout=3m&quot;]</span><br><span class="line">        securityContext:</span><br><span class="line">          privileged: true</span><br><span class="line">        imagePullPolicy: Always</span><br><span class="line">        env:</span><br><span class="line">        - name: NODE_NAME</span><br><span class="line">          valueFrom:</span><br><span class="line">            fieldRef:</span><br><span class="line">              fieldPath: spec.nodeName</span><br><span class="line">        livenessProbe:</span><br><span class="line">          httpGet:</span><br><span class="line">            path: /healthz</span><br><span class="line">            port: 20244</span><br><span class="line">          initialDelaySeconds: 10</span><br><span class="line">          periodSeconds: 3</span><br><span class="line">        volumeMounts:</span><br><span class="line">        - name: lib-modules</span><br><span class="line">          mountPath: /lib/modules</span><br><span class="line">          readOnly: true</span><br><span class="line">        - name: cni-conf-dir</span><br><span class="line">          mountPath: /etc/cni/net.d</span><br><span class="line">        - name: kubeconfig</span><br><span class="line">          mountPath: /var/lib/kube-router/kubeconfig</span><br><span class="line">          readOnly: true</span><br><span class="line">      initContainers:</span><br><span class="line">      - name: install-cni</span><br><span class="line">        image: busybox</span><br><span class="line">        imagePullPolicy: Always</span><br><span class="line">        command:</span><br><span class="line">        - /bin/sh</span><br><span class="line">        - -c</span><br><span class="line">        - set -e -x;</span><br><span class="line">          if [ ! -f /etc/cni/net.d/10-kuberouter.conf ]; then</span><br><span class="line">            TMP=/etc/cni/net.d/.tmp-kuberouter-cfg;</span><br><span class="line">            cp /etc/kube-router/cni-conf.json $&#123;TMP&#125;;</span><br><span class="line">            mv $&#123;TMP&#125; /etc/cni/net.d/10-kuberouter.conf;</span><br><span class="line">          fi</span><br><span class="line">        volumeMounts:</span><br><span class="line">        - name: cni-conf-dir</span><br><span class="line">          mountPath: /etc/cni/net.d</span><br><span class="line">        - name: kube-router-cfg</span><br><span class="line">          mountPath: /etc/kube-router</span><br><span class="line">      hostNetwork: true</span><br><span class="line">      tolerations:</span><br><span class="line">      - key: CriticalAddonsOnly</span><br><span class="line">        operator: Exists</span><br><span class="line">      - effect: NoSchedule</span><br><span class="line">        key: node-role.kubernetes.io/master</span><br><span class="line">        operator: Exists</span><br><span class="line">      volumes:</span><br><span class="line">      - name: lib-modules</span><br><span class="line">        hostPath:</span><br><span class="line">          path: /lib/modules</span><br><span class="line">      - name: cni-conf-dir</span><br><span class="line">        hostPath:</span><br><span class="line">          path: /etc/cni/net.d</span><br><span class="line">      - name: kube-router-cfg</span><br><span class="line">        configMap:</span><br><span class="line">          name: kube-router-cfg</span><br><span class="line">      - name: kubeconfig</span><br><span class="line">        hostPath:</span><br><span class="line">          path: /root/.kube/config</span><br></pre></td></tr></table></figure>
+<p>args说明：</p>
+<ol>
+<li>“–run-router=false”, “–run-firewall=true”, “–run-service-proxy=false”：只加载firewall模块；</li>
+<li>kubeconfig：用于指定master信息，映射到主机上的kubectl配置目录/root/.kube/config；</li>
+<li>–iptables-sync-period=5m：指定定期同步iptables规则的间隔时间，根据准确性的要求设置，默认5m；</li>
+<li>–cache-sync-timeout=3m：指定启动时将k8s资源做缓存的超时时间，默认1m；</li>
+</ol>
+<h1 id="NetworkPolicy配置示例"><a href="#NetworkPolicy配置示例" class="headerlink" title="NetworkPolicy配置示例"></a>NetworkPolicy配置示例</h1><h3 id="1-nsa-namespace下的pod可互相访问，而不能被其它任何pod访问"><a href="#1-nsa-namespace下的pod可互相访问，而不能被其它任何pod访问" class="headerlink" title="1.nsa namespace下的pod可互相访问，而不能被其它任何pod访问"></a>1.nsa namespace下的pod可互相访问，而不能被其它任何pod访问</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: NetworkPolicy</span><br><span class="line">metadata:</span><br><span class="line">  name: npa</span><br><span class="line">  namespace: nsa</span><br><span class="line">spec:</span><br><span class="line">  ingress: </span><br><span class="line">  - from:</span><br><span class="line">    - podSelector: &#123;&#125; </span><br><span class="line">  podSelector: &#123;&#125; </span><br><span class="line">  policyTypes:</span><br><span class="line">  - Ingress</span><br></pre></td></tr></table></figure>
+<h3 id="2-nsa-namespace下的pod不能被任何pod访问"><a href="#2-nsa-namespace下的pod不能被任何pod访问" class="headerlink" title="2.nsa namespace下的pod不能被任何pod访问"></a>2.nsa namespace下的pod不能被任何pod访问</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: NetworkPolicy</span><br><span class="line">metadata:</span><br><span class="line">  name: npa</span><br><span class="line">  namespace: nsa</span><br><span class="line">spec:</span><br><span class="line">  podSelector: &#123;&#125;</span><br><span class="line">  policyTypes:</span><br><span class="line">  - Ingress</span><br></pre></td></tr></table></figure>
+<h3 id="3-nsa-namespace下的pod只在6379-TCP端口可以被带有标签app-nsb的namespace下的pod访问，而不能被其它任何pod访问"><a href="#3-nsa-namespace下的pod只在6379-TCP端口可以被带有标签app-nsb的namespace下的pod访问，而不能被其它任何pod访问" class="headerlink" title="3.nsa namespace下的pod只在6379/TCP端口可以被带有标签app: nsb的namespace下的pod访问，而不能被其它任何pod访问"></a>3.nsa namespace下的pod只在6379/TCP端口可以被带有标签app: nsb的namespace下的pod访问，而不能被其它任何pod访问</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: NetworkPolicy</span><br><span class="line">metadata:</span><br><span class="line">  name: npa</span><br><span class="line">  namespace: nsa</span><br><span class="line">spec:</span><br><span class="line">  ingress:</span><br><span class="line">  - from:</span><br><span class="line">    - namespaceSelector:</span><br><span class="line">        matchLabels:</span><br><span class="line">          app: nsb</span><br><span class="line">    ports:</span><br><span class="line">    - protocol: TCP</span><br><span class="line">      port: 6379</span><br><span class="line">  podSelector: &#123;&#125;</span><br><span class="line">  policyTypes:</span><br><span class="line">  - Ingress</span><br></pre></td></tr></table></figure>
+<h3 id="4-nsa-namespace下的pod可以访问CIDR为14-215-0-0-16的network-endpoint的5978-TCP端口，而不能访问其它任何network-endpoints（此方式可以用来为集群内的服务开访问外部network-endpoints的白名单）"><a href="#4-nsa-namespace下的pod可以访问CIDR为14-215-0-0-16的network-endpoint的5978-TCP端口，而不能访问其它任何network-endpoints（此方式可以用来为集群内的服务开访问外部network-endpoints的白名单）" class="headerlink" title="4.nsa namespace下的pod可以访问CIDR为14.215.0.0/16的network endpoint的5978/TCP端口，而不能访问其它任何network endpoints（此方式可以用来为集群内的服务开访问外部network endpoints的白名单）"></a>4.nsa namespace下的pod可以访问CIDR为14.215.0.0/16的network endpoint的5978/TCP端口，而不能访问其它任何network endpoints（此方式可以用来为集群内的服务开访问外部network endpoints的白名单）</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: NetworkPolicy</span><br><span class="line">metadata:</span><br><span class="line">  name: npa</span><br><span class="line">  namespace: nsa</span><br><span class="line">spec:</span><br><span class="line">  egress:</span><br><span class="line">  - to:</span><br><span class="line">    - ipBlock:</span><br><span class="line">        cidr: 14.215.0.0/16</span><br><span class="line">    ports:</span><br><span class="line">    - protocol: TCP</span><br><span class="line">      port: 5978</span><br><span class="line">  podSelector: &#123;&#125;</span><br><span class="line">  policyTypes:</span><br><span class="line">  - Egress</span><br></pre></td></tr></table></figure>
+<h3 id="5-default-namespace下的pod只在80-TCP端口可以被CIDR为14-215-0-0-16的network-endpoint访问，而不能被其它任何network-endpoints访问"><a href="#5-default-namespace下的pod只在80-TCP端口可以被CIDR为14-215-0-0-16的network-endpoint访问，而不能被其它任何network-endpoints访问" class="headerlink" title="5.default namespace下的pod只在80/TCP端口可以被CIDR为14.215.0.0/16的network endpoint访问，而不能被其它任何network endpoints访问"></a>5.default namespace下的pod只在80/TCP端口可以被CIDR为14.215.0.0/16的network endpoint访问，而不能被其它任何network endpoints访问</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: NetworkPolicy</span><br><span class="line">metadata:</span><br><span class="line">  name: npd</span><br><span class="line">  namespace: default</span><br><span class="line">spec:</span><br><span class="line">  ingress:</span><br><span class="line">  - from:</span><br><span class="line">    - ipBlock:</span><br><span class="line">        cidr: 14.215.0.0/16</span><br><span class="line">    ports:</span><br><span class="line">    - protocol: TCP</span><br><span class="line">      port: 80</span><br><span class="line">  podSelector: &#123;&#125;</span><br><span class="line">  policyTypes:</span><br><span class="line">  - Ingress</span><br></pre></td></tr></table></figure>
+<h1 id="附-测试情况"><a href="#附-测试情况" class="headerlink" title="附: 测试情况"></a>附: 测试情况</h1><table>
+<thead>
+<tr>
+<th style="text-align:left">用例名称</th>
+<th style="text-align:left">测试结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">不同namespace的pod互相隔离，同一namespace的pod互通</td>
+<td style="text-align:left">通过</td>
+</tr>
+<tr>
+<td style="text-align:left">不同namespace的pod互相隔离，同一namespace的pod隔离</td>
+<td style="text-align:left">通过</td>
+</tr>
+<tr>
+<td style="text-align:left">不同namespace的pod互相隔离，白名单指定B可以访问A</td>
+<td style="text-align:left">通过</td>
+</tr>
+<tr>
+<td style="text-align:left">允许某个namespace访问集群外某个CIDR，其他外部IP全部隔离</td>
+<td style="text-align:left">通过</td>
+</tr>
+<tr>
+<td style="text-align:left">不同namespace的pod互相隔离，白名单指定B可以访问A中对应的pod以及端口</td>
+<td style="text-align:left">通过</td>
+</tr>
+<tr>
+<td style="text-align:left">以上用例，当source pod 和 destination pod在一个node上时，隔离是否生效</td>
+<td style="text-align:left">通过</td>
+</tr>
+</tbody>
+</table>
+<p>功能测试用例</p>
+<blockquote>
+<p><a href="https://ask.qcloudimg.com/draft/982360/dgs7x4hcly.zip" target="_blank" rel="noopener">#kube-router测试用例.xlsx.zip#</a></p>
+</blockquote>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjukvmxz00008cpu57bvoa49j" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-DNS-5-seconds-delay" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2018/10/26/DNS-5-seconds-delay/" class="article-date">
@@ -145,7 +265,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cju6gzoot0000aksu7yw8dmyu" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjukvmxy30000cpu5u4qzv572" class="article-share-link">Share</a>
       
       
     </footer>
@@ -188,7 +308,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cju6gzop90004aksudxltv36n" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjukvmxyi0004cpu56vk45sxi" class="article-share-link">Share</a>
       
       
     </footer>
@@ -250,7 +370,7 @@
           </li>
         
           <li>
-            <a href="/2019/01/31/servicemesh-istio/">Istio 服务网格领域的新王者</a>
+            <a href="/2019/01/31/google-borg/">Google Borg 浅析</a>
           </li>
         
       </ul>
