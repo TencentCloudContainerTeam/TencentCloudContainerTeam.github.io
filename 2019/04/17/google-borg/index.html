@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>Google Borg 浅析 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 徐蓓 Google Borg 浅析笔者的工作主要涉及集群资源调度和混合部署，对相关技术和论文有所研究，包括 Google Borg、Kubernetes、Firmament 和 Kubernetes Poseidon 等。尤其是这篇《Large-scale cluster management at Google with Borg》令笔者受益匪浅。下面本人就结合生产场景，尝试对 Goog">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Google Borg 浅析">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 徐蓓 Google Borg 浅析笔者的工作主要涉及集群资源调度和混合部署，对相关技术和论文有所研究，包括 Google Borg、Kubernetes、Firmament 和 Kubernetes Poseidon 等。尤其是这篇《Large-scale cluster management at Google with Borg》令笔者受益匪浅。下面本人就结合生产场景，尝试对 Goog">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15414871166556.jpg">
+<meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15414743848812.jpg">
+<meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15414759002584.jpg">
+<meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15414862899318.jpg">
+<meta property="og:updated_time" content="2019-04-17T07:14:37.315Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Google Borg 浅析">
+<meta name="twitter:description" content="作者: 徐蓓 Google Borg 浅析笔者的工作主要涉及集群资源调度和混合部署，对相关技术和论文有所研究，包括 Google Borg、Kubernetes、Firmament 和 Kubernetes Poseidon 等。尤其是这篇《Large-scale cluster management at Google with Borg》令笔者受益匪浅。下面本人就结合生产场景，尝试对 Goog">
+<meta name="twitter:image" content="https://tencentcloudcontainerteam.github.io/images/15414871166556.jpg">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-google-borg" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/04/17/google-borg/" class="article-date">
+  <time datetime="2019-04-17T07:00:00.000Z" itemprop="datePublished">2019-04-17</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      Google Borg 浅析
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/xiaoxubeii" target="_blank" rel="noopener">徐蓓</a></p>
+<h1 id="Google-Borg-浅析"><a href="#Google-Borg-浅析" class="headerlink" title="Google Borg 浅析"></a>Google Borg 浅析</h1><p>笔者的工作主要涉及集群资源调度和混合部署，对相关技术和论文有所研究，包括 Google Borg、Kubernetes、Firmament 和 Kubernetes Poseidon 等。尤其是这篇《Large-scale cluster management at Google with Borg》令笔者受益匪浅。下面本人就结合生产场景，尝试对 Google Borg 做些分析和延展。</p>
+<h2 id="Google-Borg-简介"><a href="#Google-Borg-简介" class="headerlink" title="Google Borg 简介"></a>Google Borg 简介</h2><p>Google Borg 是一套资源管理系统，可用于管理和调度资源。在 Borg 中，资源的单位是 <strong>Job</strong> 和 <strong>Task</strong>。<strong>Job</strong> 包含一组 <strong>Task</strong>。<strong>Task</strong> 是 Borg 管理和调度的最小单元，它对应一组 Linux 进程。熟悉 Kubernetes 的读者，可以将 <strong>Job</strong> 和 <strong>Task</strong> 大致对应为 Kubernetes 的 <strong>Service</strong> 和 <strong>Pod</strong>。</p>
+<p>在架构上，Borg 和 Kubernetes 类似，由 BorgMaster、Scheduler 和 Borglet 组成。</p>
+<p><img src="/images/15414871166556.jpg" alt=""></p>
+<h2 id="Allocs"><a href="#Allocs" class="headerlink" title="Allocs"></a>Allocs</h2><p>Borg Alloc 代表一组可用于运行 Task 的资源，如 CPU、内存、IO 和磁盘空间。它实际上是集群对物理资源的抽象。Alloc set 类似 Job，是一堆 Alloc 的集合。当一个 Alloc set 被创建时，一个或多个 Job 就可以运行在上面了。</p>
+<h2 id="Priority-和-Quota"><a href="#Priority-和-Quota" class="headerlink" title="Priority 和 Quota"></a>Priority 和 Quota</h2><p>每个 Job 都可以设置 Priority。Priority 可用于标识 Job 的重要程度，并影响一些资源分配、调度和 Preemption 策略。比如在生产中，我们会将作业分为 Routine Job 和 Batch Job。Routine Job 为生产级的例行作业，优先级最高，它占用对应实际物理资源的 Alloc set。Batch Job 代表一些临时作业，优先级最低。当资源紧张时，集群会优先 Preempt Batch Job，将资源提供给 Routine Job 使用。这时 Preempted Batch Job 会回到调度队列等待重新调度。</p>
+<p>Quota 代表资源配额，它约束 Job 的可用资源，比如 CPU、内存或磁盘。Quota 一般在调度之前进行检查。Job 若不满足，会立即在提交时被拒绝。生产中，我们一般依据实际物理资源配置 Routine Job Quota。这种方式可以确保 Routine Job 在 Quota 内一定有可用的资源。为了充分提升集群资源使用率，我们会将 Batch Job Quota 设置为无限，让它尽量去占用 Routine Job 的闲置资源，从而实现超卖。这方面内容后面会在再次详述。</p>
+<h2 id="Schedule"><a href="#Schedule" class="headerlink" title="Schedule"></a>Schedule</h2><p>调度是资源管理系统的核心功能，它直接决定了系统的“好坏”。在 Borg 中，Job 被提交后，Borgmaster 会将其放入一个 Pending Queue。Scheduler 异步地扫描队列，将 Task 调度到有充足资源的机器上。通常情况下，调度过程分为两个步骤：Filter 和 Score。Filter，或是 Feasibility Checking，用于判断机器是否满足 Task 的约束和限制，比如 Schedule Preference、Affinity 或 Resource Limit。Filter 结束后，就需要 Score 符合要求的机器，或称为 Weight。上述两个步骤完成后，Scheduler 就会挑选相应数量的机器调度给 Task 运行。实际上，选择合适的调度策略尤为重要。</p>
+<p>这里可以拿一个生产集群举例。在初期，我们的调度系统采用的 Score 策略类似 Borg E-PVM，它的作用是将 Task 尽量均匀的调度到整个集群上。从正面效果上讲，这种策略分散了 Task 负载，并在一定程度上缩小了故障域。但从反面看，它也引发了资源碎片化的问题。由于我们底层环境是异构的，机器配置并不统一，并且 Task 配置和物理配置并无对应关系。这就造成一些配置过大的 Task 无法运行，由此在一定程度上降低了资源的分配率和使用率。为了应付此类问题，我们自研了新的 Score 策略，称之为 “Best Fillup”。它的原理是在调度 Task 时选择可用资源最少的机器，也就是尽量填满。不过这种策略的缺点显而易见：单台机器的负载会升高，从而增加 Bursty Load 的风险；不利于 Batch Job 运行；故障域会增加。</p>
+<p>这篇论文，作者采用了一种被称为 hybrid 的方式，据说比第一种策略增加 3-5% 的效率。具体实现方式还有待后续研究。</p>
+<h2 id="Utilization"><a href="#Utilization" class="headerlink" title="Utilization"></a>Utilization</h2><p>资源管理系统的首要目标是提高资源使用率，Borg 亦是如此。不过由于过多的前置条件，诸如 Job 放置约束、负载尖峰、多样的机器配置和 Batch Job，导致不能仅选择 “average utilization” 作为策略指标。在 Borg 中，使用 <strong>Cell Compaction</strong> 作为评判基准。简述之就是：能承载给定负载的最小 Cell。</p>
+<p>Borg 提供了一些提高 utilization 的思路和实践方法，有些是我们在生产中已经采用的，有些则非常值得我们学习和借鉴。</p>
+<h3 id="Cell-Sharing"><a href="#Cell-Sharing" class="headerlink" title="Cell Sharing"></a>Cell Sharing</h3><p>Borg 发现，将各种优先级的 Task，比如 prod 和 non-prod 运行在共享的 Cell 中可以大幅度的提升资源利用率。</p>
+<p><img src="/images/15414743848812.jpg" alt=""></p>
+<p>上面（a）图表明，采用 Task 隔离的部署方式会增加对机器的需求。图（b）是对额外机器需求的分布函数。图（a）和图（b）都清楚的表明了将 prod job 和 non-prod job 分开部署会消耗更多的物理资源。Borg 的经验是大约会新增 20-30% 左右。</p>
+<p>个中原理也很好理解：prod job 通常会为应对负载尖峰申请较大资源，实际上这部分资源在多数时间里是闲置的。Borg 会定时回收这部分资源，并将之分配给 non-prod job 使用。在 Kubernetes 中，对应的概念是 request limit 和 limit。我们在生产中，一般设置 Prod job 的 Request limit 等于 limit，这样它就具有了最高的 Guaranteed Qos。该 QoS 使得 pod 在机器负载高时不至于被驱逐和 OOM。non-prod job 则不设置 request limit 和 limit，这使得它具有 BestEffort 级别的 QoS。kubelet 会在资源负载高时优先驱逐此类 Pod。这样也达到了和 Borg 类似的效果。</p>
+<h3 id="Large-cells"><a href="#Large-cells" class="headerlink" title="Large cells"></a>Large cells</h3><p>Borg 通过实验数据表明，小容量的 cell 通常比大容量的更占用物理资源。<br><img src="/images/15414759002584.jpg" alt=""></p>
+<p>这点对我们有和很重要的指导意义。通常情况下，我们会在设计集群时对容量问题感到犹豫不决。显而易见，小集群可以带来更高的隔离性、更小的故障域以及潜在风险。但随之带来的则是管理和架构复杂度的增加，以及更多的故障点。大集群的优缺点正好相反。在资源利用率这个指标上，我们凭直觉认为是大集群更优，但苦于无坚实的理论依据。Borg 的研究表明，大集群有利于增加资源利用率，这点对我们的决策很有帮助。</p>
+<h3 id="Fine-grained-resource-requests"><a href="#Fine-grained-resource-requests" class="headerlink" title="Fine-grained resource requests"></a>Fine-grained resource requests</h3><p>Borg 对资源细粒度分配的方法，目前已是主流，在此我就不再赘述。</p>
+<h3 id="Resource-reclamation"><a href="#Resource-reclamation" class="headerlink" title="Resource reclamation"></a>Resource reclamation</h3><p>笔者感觉这部分内容帮助最大。熟悉 Kubernetes 的读者，应该对类似的概念很熟悉，也就是所谓的 request limit。job 在提交时需要指定 resource limit，它能确保内部的 task 有足够资源可以运行。有些用户会为 task 申请过大的资源，以应对可能的请求或计算的突增。但实际上，部分资源在多数时间内是闲置的。与其资源浪费，不如利用起来。这需要系统有较精确的预测机制，可以评估 task 对实际资源的需求，并将闲置资源回收以分配给低 priority 的任务，比如 batch job。上述过程在 Borg 中被称为 <strong>resource reclamation</strong>，对使用资源的评估则被称为 <strong>reservation</strong>。Borgmaster 会定期从 Borglet 收集 resource consumption，并执行 <strong>reservation</strong>。在初始阶段，reservation 等于 resource limit。随着 task 的运行，reservation 就变为了资源的实际使用量，外加 safety margin。</p>
+<p>在 Borg 调度时，Scheduler 使用 resource limit 为 prod task 过滤和选择主机，这个过程并不依赖 reclaimed resource。从这个角度看，并不支持对 prod task 的资源超卖。但 non-prod task 则不同，它是占用已有 task 的 resource reservation。所以 non-prod task 会被调度到拥有 reclaimed resource 的机器上。</p>
+<p>这种做法当然也是有一定风险的。若资源评估出现偏差，机器上的可用资源可能会被耗尽。在这种情况下，Borg 会杀死或者降级 non-prod task，prod task 则不会受到半分任何影响。</p>
+<p><img src="/images/15414862899318.jpg" alt=""></p>
+<p>上图证实了这种策略的有效性。参照 Week 1 和 4 的 baseline，Week 2 和 3 在调整了 estimation algorithm 后，实际资源的 usage 与 reservation 的 gap 在显著缩小。在 Borg 的一个 median cell 中，有 20% 的负载是运行在 reclaimed resource 上。</p>
+<p>相较于 Borg，Kubernetes 虽然有 resource limit 和 capacity 的概念，但却缺少动态 reclaim 机制。这会使得系统对低 priority task 的资源缺少行之有效的评估机制，从而引发系统负载问题。个人感觉这个功能对资源调度和提升资源使用率影响巨大，这部分内容也是笔者的工作重心</p>
+<h2 id="Isolation"><a href="#Isolation" class="headerlink" title="Isolation"></a>Isolation</h2><p>这部分内容虽十分重要，但对于我们的生产集群优先级不是很高，在此先略过。有兴趣的读者可以自行研究。</p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a href="">Large-scale cluster management at Google with Borg</a></li>
+<li><a href="http://www.firmament.io/blog/scheduler-architectures.html" target="_blank" rel="noopener">The evolution of cluster scheduler architectures</a></li>
+<li><a href="https://github.com/kubernetes-sigs/poseidon" target="_blank" rel="noopener">poseidon</a></li>
+<li><a href="https://docs.google.com/document/d/1VNoaw1GoRK-yop_Oqzn7wZhxMxvN3pdNjuaICjXLarA/edit?usp=sharing" target="_blank" rel="noopener">Poseidon design</a></li>
+<li><a href="https://github.com/camsas/firmament" target="_blank" rel="noopener">firemament</a></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjukvs83k0005amqbeqh2snms" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2019/04/07/istio-cni/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Istio 学习笔记：Istio CNI 插件</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/04/17/google-borg/">Google Borg 浅析</a>
+          </li>
+        
+          <li>
+            <a href="/2019/04/07/istio-cni/">Istio 学习笔记：Istio CNI 插件</a>
+          </li>
+        
+          <li>
+            <a href="/2019/04/01/istio-analysis-3/">istio 庖丁解牛(三) galley</a>
+          </li>
+        
+          <li>
+            <a href="/2019/03/19/istio-analysis-2/">istio 庖丁解牛(二) sidecar injector</a>
+          </li>
+        
+          <li>
+            <a href="/2019/03/11/istio-analysis-1/">istio 庖丁解牛(一) 组件概览</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
