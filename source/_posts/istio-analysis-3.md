@@ -5,6 +5,8 @@ date: 2019/04/01 15:30:00
 
 作者: [钟华](https://imfox.io/)
 
+<meta name="referrer" content="no-referrer" />
+
 今天我们来解析istio控制面组件Galley. Galley Pod是一个单容器单进程组件, 没有sidecar, 结构独立, 职责明确.
 
 ![](https://ws4.sinaimg.cn/large/006tKfTcgy1g1maoldl74j31850u049x.jpg)

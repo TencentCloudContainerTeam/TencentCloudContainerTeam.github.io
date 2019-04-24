@@ -5,6 +5,8 @@ date: 2019/03/19 15:30:00
 
 作者: [钟华](https://imfox.io/)
 
+<meta name="referrer" content="no-referrer" />
+
 今天我们分析下istio-sidecar-injector 组件:
 
 ![image-20190319105935249](https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg)
