@@ -7,20 +7,20 @@
   
   <title>istio 庖丁解牛(二) sidecar injector | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
+  <meta name="description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
 <meta property="og:title" content="istio 庖丁解牛(二) sidecar injector">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
+<meta property="og:description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg">
 <meta property="og:image" content="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg">
-<meta property="og:updated_time" content="2019-04-24T09:16:39.167Z">
+<meta property="og:updated_time" content="2019-04-24T09:35:34.272Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="istio 庖丁解牛(二) sidecar injector">
-<meta name="twitter:description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
+<meta name="twitter:description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
 <meta name="twitter:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
@@ -91,11 +91,9 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>作者: <a href="https://imfox.io/" target="_blank" rel="noopener">钟华</a></p>
-<meta name="referrer" content="no-referrer">
-
 <p>今天我们分析下istio-sidecar-injector 组件:</p>
-<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg" alt="image-20190319105935249"></p>
-<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a></p>
+<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg" referrerpolicy="no-referrer"></p>
+<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" referrerpolicy="no-referrer" target="_blank">查看高清原图</a></p>
 <p>用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:</p>
 <ul>
 <li>自动注入: 利用 <a href="https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/" target="_blank" rel="noopener">Kubernetes Dynamic Admission Webhooks</a> 对 新建的pod 进行注入: initContainer + sidecar</li>
@@ -106,7 +104,7 @@
 <li>名为<code>istio-init</code>的initContainer: 通过配置iptables来劫持Pod中的流量</li>
 <li>名为<code>istio-proxy</code>的sidecar容器: 两个进程pilot-agent和envoy, pilot-agent 进行初始化并启动envoy</li>
 </ul>
-<p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg" alt=""></p>
+<p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg" referrerpolicy="no-referrer"></p>
 <hr>
 <h2 id="1-Dynamic-Admission-Control"><a href="#1-Dynamic-Admission-Control" class="headerlink" title="1. Dynamic Admission Control"></a>1. Dynamic Admission Control</h2><p>kubernetes 的准入控制(Admission Control)有2种:</p>
 <ul>
@@ -189,7 +187,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjuv083s30005ceor34mqpt5d" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjuv0wls20005asv1u5usnyql" class="article-share-link">Share</a>
       
       
     </footer>
