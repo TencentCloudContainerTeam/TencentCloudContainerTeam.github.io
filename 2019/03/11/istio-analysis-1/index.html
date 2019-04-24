@@ -7,20 +7,20 @@
   
   <title>istio 庖丁解牛(一) 组件概览 | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系. 1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kuber">
+  <meta name="description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系.   1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kub">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
 <meta property="og:title" content="istio 庖丁解牛(一) 组件概览">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系. 1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kuber">
+<meta property="og:description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系.   1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kub">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg">
 <meta property="og:image" content="https://ws3.sinaimg.cn/large/006tKfTcgy1g187gshs79j315m0u0qct.jpg">
-<meta property="og:updated_time" content="2019-04-17T07:14:37.315Z">
+<meta property="og:updated_time" content="2019-04-24T09:16:39.167Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="istio 庖丁解牛(一) 组件概览">
-<meta name="twitter:description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系. 1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kuber">
+<meta name="twitter:description" content="作者: 钟华 Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系.   1. istio 组件构成以下是istio 1.1 官方架构图:  虽然Istio 支持多个平台, 但将其与 Kub">
 <meta name="twitter:image" content="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
@@ -92,6 +92,8 @@
       
         <p>作者: <a href="https://imfox.me/" target="_blank" rel="noopener">钟华</a></p>
 <p>Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系.</p>
+<meta name="referrer" content="no-referrer">
+
 <h2 id="1-istio-组件构成"><a href="#1-istio-组件构成" class="headerlink" title="1. istio 组件构成"></a>1. istio 组件构成</h2><p>以下是istio 1.1 官方架构图:</p>
 <p><img src="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg" width="80%"></p>
 <p>虽然Istio 支持多个平台, 但将其与 Kubernetes 结合使用，其优势会更大, Istio 对Kubernetes 平台支持也是最完善的, 本文将基于Istio + Kubernetes 进行展开.</p>
@@ -286,7 +288,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjukvs83l0006amqb8mqsugqn" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjuv083s20004ceorptwy6rtt" class="article-share-link">Share</a>
       
       
     </footer>

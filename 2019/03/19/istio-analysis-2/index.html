@@ -7,20 +7,20 @@
   
   <title>istio 庖丁解牛(二) sidecar injector | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
+  <meta name="description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
 <meta property="og:title" content="istio 庖丁解牛(二) sidecar injector">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
+<meta property="og:description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg">
 <meta property="og:image" content="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg">
-<meta property="og:updated_time" content="2019-04-17T07:14:37.315Z">
+<meta property="og:updated_time" content="2019-04-24T09:16:39.167Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="istio 庖丁解牛(二) sidecar injector">
-<meta name="twitter:description" content="作者: 钟华 今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使用命">
+<meta name="twitter:description" content="作者: 钟华   今天我们分析下istio-sidecar-injector 组件:  查看高清原图 用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:  自动注入: 利用 Kubernetes Dynamic Admission Webhooks 对 新建的pod 进行注入: initContainer + sidecar 手动注入: 使">
 <meta name="twitter:image" content="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
@@ -91,6 +91,8 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>作者: <a href="https://imfox.io/" target="_blank" rel="noopener">钟华</a></p>
+<meta name="referrer" content="no-referrer">
+
 <p>今天我们分析下istio-sidecar-injector 组件:</p>
 <p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg" alt="image-20190319105935249"></p>
 <p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" target="_blank">查看高清原图</a></p>
@@ -187,7 +189,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjukvs83m0007amqb21cufgqn" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjuv083s30005ceor34mqpt5d" class="article-share-link">Share</a>
       
       
     </footer>
