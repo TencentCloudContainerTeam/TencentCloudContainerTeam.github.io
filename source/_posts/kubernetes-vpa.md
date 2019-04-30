@@ -15,6 +15,7 @@ date: 2019/04/30 16:00:00
 在 Kubernetes 中 [VPA](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) 项目主要是完成这项工作（主要针对 Pod）。
 
 ### Kubernetes VPA
+
 > Vertical Pod Autoscaler (VPA) frees the users from necessity of setting up-to-date resource requests for the containers in their pods. When configured, it will set the requests automatically based on usage and thus allow proper scheduling onto nodes so that appropriate resource amount is available for each pod.
 
 以上是官方定义。简单来说是 Kubernetes VPA 可以根据实际负载动态设置 pod resource requests。
