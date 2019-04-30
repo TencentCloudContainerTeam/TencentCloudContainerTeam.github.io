@@ -63,6 +63,79 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-kubernetes-vpa" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/04/30/kubernetes-vpa/" class="article-date">
+  <time datetime="2019-04-30T08:00:00.000Z" itemprop="datePublished">2019-04-30</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/xiaoxubeii" target="_blank" rel="noopener">徐蓓</a></p>
+<h1 id="如何使用-Kubernetes-VPA-实现资源动态扩展和回收"><a href="#如何使用-Kubernetes-VPA-实现资源动态扩展和回收" class="headerlink" title="如何使用 Kubernetes VPA 实现资源动态扩展和回收"></a>如何使用 Kubernetes VPA 实现资源动态扩展和回收</h1><h2 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h2><p>最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。</p>
+<h2 id="资源动态扩展"><a href="#资源动态扩展" class="headerlink" title="资源动态扩展"></a>资源动态扩展</h2><p>资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器个数。笔者研究方案的目的是为了提升集群资源使用率，所以这里单讨论资源纵向扩展。</p>
+<p>不过坦白来讲，资源纵向扩展首要目标并不是为了提高集群利用率，而是为了优化集群资源、提高资源可用性和性能。</p>
+<p>在 Kubernetes 中 <a href="https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler" target="_blank" rel="noopener">VPA</a> 项目主要是完成这项工作（主要针对 Pod）。</p>
+<h3 id="Kubernetes-VPA"><a href="#Kubernetes-VPA" class="headerlink" title="Kubernetes VPA"></a>Kubernetes VPA</h3><blockquote>
+<p>Vertical Pod Autoscaler (VPA) frees the users from necessity of setting up-to-date resource requests for the containers in their pods. When configured, it will set the requests automatically based on usage and thus allow proper scheduling onto nodes so that appropriate resource amount is available for each pod.</p>
+</blockquote>
+<p>以上是官方定义。简单来说是 Kubernetes VPA 可以根据实际负载动态设置 pod resource requests。</p>
+<p>Kubernetes VPA 包含以下组件：</p>
+<ul>
+<li>Recommender：用于根据监控指标结合内置机制给出资源建议值</li>
+<li>Updater：用于实时更新 pod resource requests</li>
+<li>History Storage：用于采集和存储监控数据</li>
+<li>Admission Controller: 用于在 pod 创建时修改 resource requests</li>
+</ul>
+<p>以下是架构图：</p>
+<p><img src="/images/15550662807076.jpg" alt=""></p>
+<p>主要流程是：<code>Recommender</code>在启动时从<code>History Storage</code>获取历史数据，根据内置机制修改<code>VPA API object</code>资源建议值。<code>Updater</code>监听<code>VPA API object</code>，依据建议值动态修改 pod resource requests。<code>VPA Admission Controller</code>则是用于 pod 创建时修改 pod resource requests。<code>History Storage</code>则是通过<code>Kubernetes Metrics API</code>采集和存储监控数据。</p>
+<p>Kubernetes VPA 的整体架构比较简单，流程也很清晰，理解起来并不困难。但里面隐藏的几个功能点，却是方案的核心所在。它们的质量直接影响了方案的成熟度和评价效果：</p>
+<p>1、如何设计 Recommendation model<br><code>Recommendation model</code>是集群优化的重中之重，它的好坏直接影响了集群资源优化的效果。就笔者目前了解，在 Kubernetes VPA 中这个模型是固定的，用户能做的是配置参数和数据源。</p>
+<p>从官方描述看：</p>
+<blockquote>
+<p>The request is calculated based on analysis of the current and previous runs of the container and other containers with similar properties (name, image, command, args). The recommendation model (MVP) assumes that the memory and CPU consumption are independent random variables with distribution equal to the one observed in the last N days (recommended value is N=8 to capture weekly peaks). A more advanced model in future could attempt to detect trends, periodicity and other time-related patterns.</p>
+</blockquote>
+<p>CPU 和内存的建议值均是依据<strong>历史数据+固定机制</strong>计算而成，并没有一套解释引擎能让用户自定义规则。这在一定程度上影响了<code>Recommendation model</code>的准确性。就笔者理解，集群优化和混合部署的核心难点在于寻找能准确描述集群负载的指标，建立指标模型，并最终通过优化模型而达到最终目的 - 不论是为了优化集群或提高集群使用率。这个过程类似机器学习：先依旧经验或特征工程寻找特征变量，建立模型后使用数据不断优化参数，最后得到可用模型。所以仅靠单一指标 - 比如 CPU 或内存使用率 - 所建立的固定模型并不能准确描述集群状态和资源瓶颈。不管是从指标的颗粒度或固定模型上来看，最终效果都不会太好。</p>
+<p>2、Pod 是否支持热更新<br>在 Kubernetes 中，pod resource requests 会影响 pod QoS 和容器的限制状态，比如驱逐策略、<code>OOM Score</code>和 cgroup 的限制参数等。如果不重建的话，单纯的修改 pod spec 只会影响调度策略。重建的话会导致 pod 重新调度，同时也在一定程度上降低了应用的可用性。官网列出一个更新策略<code>auto</code>，是可以<code>in-place</code>重建：</p>
+<blockquote>
+<p>“Auto”: VPA assigns resource requests on pod creation as well as updates them on existing pods using the preferred update mechanism. Currently this is equivalent to “Recreate” (see below). Once restart free (“in-place”) update of pod requests is available, it may be used as the preferred update mechanism by the “Auto” mode. NOTE: This feature of VPA is experimental and may cause downtime for your applications.</p>
+</blockquote>
+<p>目前应该没有完全实现。不过无论哪种方式，pod 重建貌似不可避免。</p>
+<p>3、Pod 实时更新是否支持模糊控制<br>由于 Pod 更新会涉及重建，那么实时更新的触发条件就不应依据一个固定的值，比如值的变化触发更新重建（显然不可取）、依据逻辑表达式触发更新重建（也不可取，极端情况下会在设定值上下不断触发）。此时就需要在离散的值之间加入缓冲范围。而这个范围的设置高度依赖经验和实际集群情况，不然的话又会影响方案的最终效果。</p>
+<p>总的来说，Kubernetes VPA 解决了资源纵向扩展的大部分工程问题。若应用于生产，还需做很多的个性化工作。</p>
+<h2 id="资源回收"><a href="#资源回收" class="headerlink" title="资源回收"></a>资源回收</h2><p>既然 Kubernetes VPA 主要目标不是提升资源使用率，那它和混合部署又有何关系？别急，我们先来回顾下集群混合部署中提升资源使用率的关键是什么。</p>
+<p>提升资源使用率最直观的方式，是在保证服务可用性的前提下尽量多的分配集群资源。我们知道在一般的集群管理软件中，调度器会为应用分配集群的可用资源。分配给应用的是逻辑资源，无需要和物理资源一一对应，比如可以超卖。并且应用持有的资源，一般情况下也不会全时段占用。在这种情况下，可将分配资源分为闲时和忙时。应用按照优先级区分，为高优先级的应用分配较多的资源。动态回收高优先级应用的闲时资源分配给低优先级应用使用，在高优先级应用负载升高时驱逐低优先级应用，从而达到提升资源使用率的目的。</p>
+<p>在 Kubernetes VPA 中缺少资源回收的机制，但<code>Recommender</code>却可以配合<code>Updater</code>动态修改 pod resource requests 的值。也就是说 <strong>pod resource requests - 推荐值 = 资源回收值</strong>。这间接实现了资源回收的功能。那么 Kubernetes 调度器就可将这部分资源分配给其他应用使用。当然实际方案不会这么简单。比如<code>Recommender</code>就不需要使用<code>History Storage</code>中的历史数据和计算规则。初始值设为 pod resource requests，实时获取监控数据，加个 buffer 即可。这可以算是 Kubernetes 简陋版的资源回收功能。至于回收后，资源再分配和资源峰值驱逐等又是另一套流程了。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>暂时还是打算基于 Kubernetes VPA 实现资源回收和混合部署功能，毕竟现成的轮子。至于集群负载指标和模型，就完全是一套经验工程了。只能在实际生产中慢慢积累，别无他法。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjv3hxd86000bcqq7f7q4koo0" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-google-borg" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/04/17/google-borg/" class="article-date">
@@ -123,7 +196,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjuv0wlrx0003asv1k16on90p" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjv3hxd7q0003cqq7hjoa8nbs" class="article-share-link">Share</a>
       
       
     </footer>
@@ -192,7 +265,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjuv0wls70007asv1g22pd29g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjv3hxd7v0007cqq707r6nbq7" class="article-share-link">Share</a>
       
       
     </footer>
@@ -365,7 +438,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjuv0wls50006asv1b7vnc5zh" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjv3hxd7u0006cqq7rm51e17v" class="article-share-link">Share</a>
       
       
     </footer>
@@ -494,7 +567,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjuv0wls20005asv1u5usnyql" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjv3hxd7s0005cqq74nvmu1b5" class="article-share-link">Share</a>
       
       
     </footer>
@@ -724,7 +797,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjuv0wls00004asv1nnimrzve" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjv3hxd7r0004cqq7cmnm6zb1" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1423,7 +1496,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjuv0wlsf000basv1eiv37kd0" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjv3hxd88000ccqq7wsxwuqz6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1510,7 +1583,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjuv0wlsb0009asv1czec14am" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjv3hxd800009cqq7m2h8wc2q" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1605,7 +1678,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjuv0wlrw0002asv1eh4jdrhg" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjv3hxd7o0002cqq77weux3hl" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1721,248 +1794,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjuv0wlsc000aasv1mzmrk1p0" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-NodePort-SVC-LB直通容器性能测试对比" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" class="article-date">
-  <time datetime="2018-11-06T07:45:37.000Z" itemprop="datePublished">2018-11-06</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/">NodePort, svc, LB直通Pod性能测试对比</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者：郭志宏 </p>
-<h3 id="1-测试背景："><a href="#1-测试背景：" class="headerlink" title="1. 测试背景："></a>1. 测试背景：</h3><p>目前基于k8s 服务的外网访问方式有以下几种：</p>
-<ol>
-<li>NodePort  </li>
-<li>svc(通过k8s 的clusterip 访问)</li>
-<li>自研 LB -&gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）</li>
-</ol>
-<p>其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这三种方案的性能损耗。</p>
-<h3 id="2-测试方案"><a href="#2-测试方案" class="headerlink" title="2. 测试方案"></a>2. 测试方案</h3><p>为了做到测试的准确性和全面性，我们提供以下测试工具和测试数据：</p>
-<ol>
-<li><p>2核4G 的Pod</p>
-</li>
-<li><p>5个Node 的4核8G 集群</p>
-</li>
-<li><p>16核32G 的Nginx 作为统一的LB</p>
-</li>
-<li><p>一个测试应用，2个静态测试接口，分别对用不同大小的数据包（4k 和 100K）</p>
-</li>
-<li><p>测试1个pod ，10个pod的情况（service/pod 越多，一个机器上的iptables 规则数就越多，关于iptables规则数对转发性能的影响，在“ipvs和iptables模式下性能对⽐比测试报告” 已有结论： Iptables场景下，对应service在总数为2000内时，每个service 两个pod, 性能没有明显下降。当service总数达到3000、4000时，性能下降明显，service个数越多，性能越差。）所以这里就不考虑pod数太多的情况。</p>
-</li>
-<li><p>单独的16核32G 机器作作为压力机，使用wrk 作为压测工具, qps 作为评估标准，</p>
-</li>
-<li><p>那么每种访问方式对应以下4种情况</p>
-</li>
-</ol>
-<table>
-<thead>
-<tr>
-<th>测试用例</th>
-<th>Pod 数</th>
-<th>数据包大小</th>
-<th>平均QPS</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>4k</td>
-<td></td>
-</tr>
-<tr>
-<td>2</td>
-<td>1</td>
-<td>100K</td>
-<td></td>
-</tr>
-<tr>
-<td>3</td>
-<td>10</td>
-<td>4k</td>
-<td></td>
-</tr>
-<tr>
-<td>4</td>
-<td>10</td>
-<td>100k</td>
-</tr>
-</tbody>
-</table>
-<ol start="8">
-<li>每种情况测试5次，取平均值（qps），完善上表。</li>
-</ol>
-<h3 id="3-测试过程"><a href="#3-测试过程" class="headerlink" title="3. 测试过程"></a>3. 测试过程</h3><ol>
-<li><p>准备一个测试应用（基于nginx），提供两个静态文件接口，分别返回4k的数据和100K 的数据。</p>
-<p>镜像地址：ccr.ccs.tencentyun.com/caryguo/nginx:v0.1</p>
-<p>接口：<a href="http://0.0.0.0/4k.html" target="_blank" rel="noopener">http://0.0.0.0/4k.html</a></p>
-<p>​            <a href="http://0.0.0.0/100k.htm" target="_blank" rel="noopener">http://0.0.0.0/100k.htm</a></p>
-</li>
-<li><p>部署压测工具。<a href="https://github.com/wg/wrk" target="_blank" rel="noopener">https://github.com/wg/wrk</a></p>
-</li>
-<li><p>部署集群，5台Node来调度测试Pod, 10.0.4.6 这台用来独部署Nginx, 作为统一的LB, 将这台机器加入集群的目的是为了 将ClusterIP 作为nginx 的upstream .</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">root@VM-4-6-ubuntu:/etc/nginx# kubectl get node</span><br><span class="line">NAME        STATUS                     ROLES     AGE       VERSION</span><br><span class="line">10.0.4.12   Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.3    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.5    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.6    Ready,SchedulingDisabled   &lt;none&gt;    12m       v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.7    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br><span class="line">10.0.4.9    Ready                      &lt;none&gt;    3d        v1.10.5-qcloud-rev1</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>根据不同的测试场景，调整Nginx 的upstream, 根据不同的Pod, 调整压力，让请求的超时率控制在万分之一以内,  数据如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">./wrk -c 200 -d 20 -t 10 http://carytest.pod.com/10k.html   单pod</span><br><span class="line">./wrk -c 1000 -d 20 -t 100 http://carytest.pod.com/4k.html  10 pod</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>测试wrk -&gt; nginx -&gt; Pod 场景，</p>
-</li>
-</ol>
-<table>
-<thead>
-<tr>
-<th>测试用例</th>
-<th>Pod 数</th>
-<th>数据包大小</th>
-<th>平均QPS</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>4k</td>
-<td>12498</td>
-</tr>
-<tr>
-<td>2</td>
-<td>1</td>
-<td>100K</td>
-<td>2037</td>
-</tr>
-<tr>
-<td>3</td>
-<td>10</td>
-<td>4k</td>
-<td>82752</td>
-</tr>
-<tr>
-<td>4</td>
-<td>10</td>
-<td>100k</td>
-<td>7743</td>
-</tr>
-</tbody>
-</table>
-<ol start="5">
-<li>wrk -&gt; nginx -&gt; ClusterIP -&gt; Pod</li>
-</ol>
-<table>
-<thead>
-<tr>
-<th>测试用例</th>
-<th>Pod 数</th>
-<th>数据包大小</th>
-<th>平均QPS</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>4k</td>
-<td>12568</td>
-</tr>
-<tr>
-<td>2</td>
-<td>1</td>
-<td>100K</td>
-<td>2040</td>
-</tr>
-<tr>
-<td>3</td>
-<td>10</td>
-<td>4k</td>
-<td>81752</td>
-</tr>
-<tr>
-<td>4</td>
-<td>10</td>
-<td>100k</td>
-<td>7824</td>
-</tr>
-</tbody>
-</table>
-<ol start="6">
-<li>NodePort 场景，wrk -&gt; nginx -&gt; NodePort -&gt; Pod</li>
-</ol>
-<table>
-<thead>
-<tr>
-<th>测试用例</th>
-<th>Pod 数</th>
-<th>数据包大小</th>
-<th>平均QPS</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>4k</td>
-<td>12332</td>
-</tr>
-<tr>
-<td>2</td>
-<td>1</td>
-<td>100K</td>
-<td>2028</td>
-</tr>
-<tr>
-<td>3</td>
-<td>10</td>
-<td>4k</td>
-<td>76973</td>
-</tr>
-<tr>
-<td>4</td>
-<td>10</td>
-<td>100k</td>
-<td>5676</td>
-</tr>
-</tbody>
-</table>
-<p>压测过程中，4k 数据包的情况下，应用的负载都在80% -100% 之间， 100k 情况下，应用的负载都在20%-30%</p>
-<p>之间，压力都在网络消耗上，没有到达服务后端。</p>
-<h3 id="4-测试结论"><a href="#4-测试结论" class="headerlink" title="4. 测试结论"></a>4. 测试结论</h3><ol>
-<li>在一个pod 的情况下（4k 或者100 数据包），3中网络方案差别不大，QPS 差距在3% 以内。</li>
-<li>在10个pod，4k 数据包情况下，lb-&gt;pod 和 svc 差距不大，NodePort 损失近7% 左右。</li>
-<li>10个Pod, 100k 数据包的情况下，lb-&gt;pod 和 svc 差距不大，NodePort 损失近 25% </li>
-</ol>
-<h3 id="5-附录"><a href="#5-附录" class="headerlink" title="5. 附录"></a>5. 附录</h3><ol>
-<li>nginx 配置</li>
-</ol>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br></pre></td><td class="code"><pre><span class="line">user nginx;</span><br><span class="line">worker_processes 50;</span><br><span class="line">error_log /var/log/nginx/error.log;</span><br><span class="line">pid /run/nginx.pid;</span><br><span class="line"></span><br><span class="line"># Load dynamic modules. See /usr/share/nginx/README.dynamic.</span><br><span class="line">include /usr/share/nginx/modules/*.conf;</span><br><span class="line"></span><br><span class="line">events &#123;</span><br><span class="line">    worker_connections 100000;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">http &#123;</span><br><span class="line">    log_format  main  &apos;$remote_addr - $remote_user [$time_local] &quot;$request&quot; &apos;</span><br><span class="line">                      &apos;$status $body_bytes_sent &quot;$http_referer&quot; &apos;</span><br><span class="line">                      &apos;&quot;$http_user_agent&quot; &quot;$http_x_forwarded_for&quot;&apos;;</span><br><span class="line"></span><br><span class="line">    access_log  /var/log/nginx/access.log  main;</span><br><span class="line"></span><br><span class="line">    sendfile            on;</span><br><span class="line">    tcp_nopush          on;</span><br><span class="line">    tcp_nodelay         on;</span><br><span class="line">    keepalive_timeout   65;</span><br><span class="line">    types_hash_max_size 2048;</span><br><span class="line"></span><br><span class="line">    include             /etc/nginx/mime.types;</span><br><span class="line">    default_type        application/octet-stream;</span><br><span class="line"></span><br><span class="line">    # Load modular configuration files from the /etc/nginx/conf.d directory.</span><br><span class="line">    # See http://nginx.org/en/docs/ngx_core_module.html#include</span><br><span class="line">    # for more information.</span><br><span class="line">    include /etc/nginx/conf.d/*.conf;</span><br><span class="line">    </span><br><span class="line">     # pod ip</span><br><span class="line">    upstream  panda-pod &#123;</span><br><span class="line">          #ip_hash;</span><br><span class="line">          # Pod ip</span><br><span class="line">          #server   10.0.4.12:30734  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.1.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.2.3:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.3.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.4.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.4.5:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.3.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.1.4:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.0.7:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.0.6:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          #server   172.16.2.2:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">          </span><br><span class="line">          # svc ip</span><br><span class="line">          #server   172.16.255.121:80  max_fails=2 fail_timeout=30s;</span><br><span class="line">           </span><br><span class="line">          # NodePort</span><br><span class="line">          server   10.0.4.12:30734   max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.3:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.5:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.7:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">          server   10.0.4.9:30734    max_fails=2 fail_timeout=30s;</span><br><span class="line">		    </span><br><span class="line">          keepalive 256;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    server &#123;</span><br><span class="line">        listen       80;</span><br><span class="line">        server_name  carytest.pod.com;</span><br><span class="line">        # root   /usr/share/nginx/html;</span><br><span class="line">        charset utf-8;</span><br><span class="line"></span><br><span class="line">        # Load configuration files for the default server block.</span><br><span class="line">        include /etc/nginx/default.d/*.conf;</span><br><span class="line">        location / &#123;</span><br><span class="line">                    proxy_pass        http://panda-pod;</span><br><span class="line">                    proxy_http_version 1.1;</span><br><span class="line">                    proxy_set_header Connection &quot;&quot;;</span><br><span class="line">                    proxy_redirect off;</span><br><span class="line">                    proxy_set_header  Host  $host;</span><br><span class="line">                    proxy_set_header  X-Real-IP  $remote_addr;</span><br><span class="line">                    proxy_set_header  X-Forwarded-For  $proxy_add_x_forwarded_for;</span><br><span class="line">                    proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;</span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        error_page 404 /404.html;</span><br><span class="line">            location = /40x.html &#123;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        error_page 500 502 503 504 /50x.html;</span><br><span class="line">            location = /50x.html &#123;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjuv0wlrt0001asv1zcpdpcon" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjv3hxd83000acqq7somxsfhv" class="article-share-link">Share</a>
       
       
     </footer>
@@ -2008,6 +1840,10 @@
       <ul>
         
           <li>
+            <a href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
+          </li>
+        
+          <li>
             <a href="/2019/04/17/google-borg/">Google Borg 浅析</a>
           </li>
         
@@ -2021,10 +1857,6 @@
         
           <li>
             <a href="/2019/03/19/istio-analysis-2/">istio 庖丁解牛(二) sidecar injector</a>
-          </li>
-        
-          <li>
-            <a href="/2019/03/11/istio-analysis-1/">istio 庖丁解牛(一) 组件概览</a>
           </li>
         
       </ul>
