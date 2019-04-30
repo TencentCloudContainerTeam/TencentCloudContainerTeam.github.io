@@ -7,19 +7,19 @@
   
   <title>如何使用 Kubernetes VPA 实现资源动态扩展和回收 | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="作者: 徐蓓 如何使用 Kubernetes VPA 实现资源动态扩展和回收简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 C">
+  <meta name="description" content="作者: 徐蓓 简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
 <meta property="og:title" content="如何使用 Kubernetes VPA 实现资源动态扩展和回收">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="作者: 徐蓓 如何使用 Kubernetes VPA 实现资源动态扩展和回收简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 C">
+<meta property="og:description" content="作者: 徐蓓 简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15550662807076.jpg">
-<meta property="og:updated_time" content="2019-04-30T07:54:19.721Z">
+<meta property="og:updated_time" content="2019-04-30T07:58:16.197Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="如何使用 Kubernetes VPA 实现资源动态扩展和回收">
-<meta name="twitter:description" content="作者: 徐蓓 如何使用 Kubernetes VPA 实现资源动态扩展和回收简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 C">
+<meta name="twitter:description" content="作者: 徐蓓 简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器">
 <meta name="twitter:image" content="https://tencentcloudcontainerteam.github.io/images/15550662807076.jpg">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
@@ -90,7 +90,7 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>作者: <a href="https://github.com/xiaoxubeii" target="_blank" rel="noopener">徐蓓</a></p>
-<h1 id="如何使用-Kubernetes-VPA-实现资源动态扩展和回收"><a href="#如何使用-Kubernetes-VPA-实现资源动态扩展和回收" class="headerlink" title="如何使用 Kubernetes VPA 实现资源动态扩展和回收"></a>如何使用 Kubernetes VPA 实现资源动态扩展和回收</h1><h2 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h2><p>最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。</p>
+<h2 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h2><p>最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。</p>
 <h2 id="资源动态扩展"><a href="#资源动态扩展" class="headerlink" title="资源动态扩展"></a>资源动态扩展</h2><p>资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器个数。笔者研究方案的目的是为了提升集群资源使用率，所以这里单讨论资源纵向扩展。</p>
 <p>不过坦白来讲，资源纵向扩展首要目标并不是为了提高集群利用率，而是为了优化集群资源、提高资源可用性和性能。</p>
 <p>在 Kubernetes 中 <a href="https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler" target="_blank" rel="noopener">VPA</a> 项目主要是完成这项工作（主要针对 Pod）。</p>
@@ -130,7 +130,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjv3hxd86000bcqq7f7q4koo0" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjv3i2g1s000baysji2v7fxx5" class="article-share-link">Share</a>
       
       
     </footer>
