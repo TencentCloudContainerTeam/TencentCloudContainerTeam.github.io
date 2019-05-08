@@ -63,6 +63,63 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-kubernetes-best-practice-grace-update" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/05/08/kubernetes-best-practice-grace-update/" class="article-date">
+  <time datetime="2019-05-08T12:48:00.000Z" itemprop="datePublished">2019-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<p>当kubernetes对服务滚动更新的期间，默认配置的情况下可能会让部分连接异常（比如连接被拒绝），我们来分析下原因并给出最佳实践</p>
+<h2 id="滚动更新场景"><a href="#滚动更新场景" class="headerlink" title="滚动更新场景"></a>滚动更新场景</h2><p>使用 deployment 部署服务并关联 service</p>
+<ul>
+<li>修改 deployment 的 replica 调整副本数量来滚动更新</li>
+<li>升级程序版本(修改镜像tag)触发 deployment 新建 replicaset 启动新版本的 pod</li>
+<li>使用 HPA (HorizontalPodAutoscaler) 来对 deployment 自动扩缩容<h2 id="更新过程连接异常的原因"><a href="#更新过程连接异常的原因" class="headerlink" title="更新过程连接异常的原因"></a>更新过程连接异常的原因</h2>滚动更新时，service 对应的 pod 会被创建或销毁，也就是 service 对应的 endpoint 列表会新增或移除endpoint，更新期间可能让部分连接异常，主要原因是：</li>
+</ul>
+<ol>
+<li>pod 被创建，还没完全启动就被 endpoint controller 加入到 service 的 endpoint 列表，然后 kube-proxy 配置对应的路由规则(iptables/ipvs)，如果请求被路由到还没完全启动完成的 pod，这时 pod 还不能正常处理请求，就会导致连接异常</li>
+<li>pod 被销毁，但是从 endpoint controller watch 到变化并更新 service 的 endpoint 列表到 kube-proxy 更新路由规则这期间有个时间差，pod可能已经完全被销毁了，但是路由规则还没来得及更新，造成请求依旧还能被转发到已经销毁的 pod ip，导致连接异常<h2 id="最佳实践"><a href="#最佳实践" class="headerlink" title="最佳实践"></a>最佳实践</h2></li>
+</ol>
+<ul>
+<li>针对第一种情况，可以给 pod 里的 container 加 readinessProbe (就绪检查)，这样可以让容器完全启动了才被endpoint controller加进 service 的 endpoint 列表，然后 kube-proxy 再更新路由规则，这时请求被转发到的所有后端 pod 都是正常运行，避免了连接异常</li>
+<li>针对第二种情况，可以给 pod 里的 container 加 preStop hook，让 pod 真正销毁前先 sleep 等待一段时间，留点时间给 endpoint controller 和 kube-proxy 清理 endpoint 和路由规则，这段时间 pod 处于 Terminating 状态，在路由规则更新完全之前如果有请求转发到这个被销毁的 pod，请求依然可以被正常处理，因为它还没有被真正销毁</li>
+</ul>
+<p>最佳实践 yaml 示例:<br><figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">extensions/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  replicas:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">  selector:</span></span><br><span class="line"><span class="attr">    matchLabels:</span></span><br><span class="line"><span class="attr">      component:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">  template:</span></span><br><span class="line"><span class="attr">    metadata:</span></span><br><span class="line"><span class="attr">      labels:</span></span><br><span class="line"><span class="attr">        component:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">    spec:</span></span><br><span class="line"><span class="attr">      containers:</span></span><br><span class="line"><span class="attr">      - name:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">        image:</span> <span class="string">"nginx"</span></span><br><span class="line"><span class="attr">        ports:</span></span><br><span class="line"><span class="attr">        - name:</span> <span class="string">http</span></span><br><span class="line"><span class="attr">          hostPort:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">          containerPort:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">          protocol:</span> <span class="string">TCP</span></span><br><span class="line"><span class="attr">        readinessProbe:</span></span><br><span class="line"><span class="attr">          httpGet:</span></span><br><span class="line"><span class="attr">            path:</span> <span class="string">/healthz</span></span><br><span class="line"><span class="attr">            port:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">            httpHeaders:</span></span><br><span class="line"><span class="attr">            - name:</span> <span class="string">X-Custom-Header</span></span><br><span class="line"><span class="attr">              value:</span> <span class="string">Awesome</span></span><br><span class="line"><span class="attr">          initialDelaySeconds:</span> <span class="number">15</span></span><br><span class="line"><span class="attr">          timeoutSeconds:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">        lifecycle:</span></span><br><span class="line"><span class="attr">          preStop:</span></span><br><span class="line"><span class="attr">            exec:</span></span><br><span class="line"><span class="attr">              command:</span> <span class="string">["/bin/bash",</span> <span class="string">"-c"</span><span class="string">,</span> <span class="string">"30"</span><span class="string">]</span></span><br></pre></td></tr></table></figure></p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li>Container probes: <a href="https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes</a></li>
+<li>Container Lifecycle Hooks: <a href="https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/</a></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjvf824ru000bnpr11se98jph" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-kubernetes-vpa" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/04/30/kubernetes-vpa/" class="article-date">
@@ -126,7 +183,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjv3ifv5u000bb1x06kywg8mr" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjvf824rw000cnpr1wvjg28gc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -196,7 +253,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjv3ifv5f0003b1x03alidfbq" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjvf824re0003npr1aydxlgq2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -265,7 +322,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjv3ifv5k0007b1x0svnycbfl" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjvf824rj0007npr1c12jd6wk" class="article-share-link">Share</a>
       
       
     </footer>
@@ -438,7 +495,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjv3ifv5j0006b1x0o76grivy" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjvf824ri0006npr1t062oe8k" class="article-share-link">Share</a>
       
       
     </footer>
@@ -567,7 +624,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjv3ifv5i0005b1x024tzd4sa" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjvf824rh0005npr1xg78jl7c" class="article-share-link">Share</a>
       
       
     </footer>
@@ -797,7 +854,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjv3ifv5g0004b1x0qvv7uf91" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjvf824rf0004npr186q8443d" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1496,7 +1553,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjv3ifv5v000cb1x0errprfyc" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjvf824rz000dnpr1pmu7mgbn" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1583,7 +1640,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjv3ifv5o0009b1x0kdzs4lg6" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjvf824rn0009npr16evprvus" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1678,123 +1735,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjv3ifv5d0002b1x0nr453ld2" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-kernel-parameters-and-container" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2018/11/19/kernel-parameters-and-container/" class="article-date">
-  <time datetime="2018-11-19T13:52:00.000Z" itemprop="datePublished">2018-11-19</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2018/11/19/kernel-parameters-and-container/">给容器设置内核参数</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者： 洪志国</p>
-<h1 id="sysctl"><a href="#sysctl" class="headerlink" title="sysctl"></a>sysctl</h1><p>/proc/sys/目录下导出了一些可以在运行时修改kernel参数的proc文件。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># ls /proc/sys</span><br><span class="line">abi  crypto  debug  dev  fs  kernel  net  vm</span><br></pre></td></tr></table></figure>
-<p>可以通过写proc文件来修改这些内核参数。例如， 要打开ipv4的路由转发功能：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 1 &gt; /proc/sys/net/ipv4/ip_forward</span><br></pre></td></tr></table></figure>
-<p>也可以通过sysctl命令来完成(只是对以上写proc文件操作的简单包装)：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -w net.ipv4.ip_forward=1</span><br></pre></td></tr></table></figure>
-<p>其他常用sysctl命令：</p>
-<p>显示本机所有sysctl内核参数及当前值</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -a</span><br></pre></td></tr></table></figure>
-<p>从文件(缺省使用/etc/sysctl.conf)加载多个参数和取值，并写入内核</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sysctl -p [FILE]</span><br></pre></td></tr></table></figure>
-<p>另外， 系统启动的时候， 会自动执行一下”sysctl -p”。 所以，希望重启之后仍然生效的参数值， 应该写到/etc/sysctl.conf文件里面。</p>
-<h1 id="容器与sysctl"><a href="#容器与sysctl" class="headerlink" title="容器与sysctl"></a>容器与sysctl</h1><p>内核方面做了大量的工作，把一部分sysctl内核参数进行了namespace化(namespaced)。 也就是多个容器和主机可以各自独立设置某些内核参数。例如， 可以通过net.ipv4.ip_local_port_range，在不同容器中设置不同的端口范围。</p>
-<p>如何判断一个参数是不是namespaced? </p>
-<p>运行一个具有privileged权限的容器(参考下一节内容)， 然后在容器中修改该参数，看一下在host上能否看到容器在中所做的修改。如果看不到， 那就是namespaced， 否则不是。</p>
-<p>目前已经namespace化的sysctl内核参数：</p>
-<ul>
-<li>kernel.shm*,</li>
-<li>kernel.msg*,</li>
-<li>kernel.sem,</li>
-<li>fs.mqueue.*,</li>
-<li>net.*.</li>
-</ul>
-<p>注意， vm.*并没有namespace化。 比如vm.max_map_count， 在主机或者一个容器中设置它， 其他所有容器都会受影响，都会看到最新的值。</p>
-<h1 id="在docker容器中修改sysctl内核参数"><a href="#在docker容器中修改sysctl内核参数" class="headerlink" title="在docker容器中修改sysctl内核参数"></a>在docker容器中修改sysctl内核参数</h1><p>正常运行的docker容器中，是不能修改任何sysctl内核参数的。因为/proc/sys是以只读方式挂载到容器里面的。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">proc on /proc/sys type proc (ro,nosuid,nodev,noexec,relatime)</span><br></pre></td></tr></table></figure>
-<p>要给容器设置不一样的sysctl内核参数，有多种方式。</p>
-<h3 id="方法一-–privileged"><a href="#方法一-–privileged" class="headerlink" title="方法一 –privileged"></a>方法一 –privileged</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"># docker run --privileged -it ubuntu bash</span><br></pre></td></tr></table></figure>
-<p>整个/proc目录都是以”rw”权限挂载的<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)</span><br></pre></td></tr></table></figure></p>
-<p>在容器中，可以任意修改sysctl内核参赛。</p>
-<p>注意：<br>如果修改的是namespaced的参数， 则不会影响host和其他容器。反之，则会影响它们。</p>
-<p>如果想在容器中修改主机的net.ipv4.ip_default_ttl参数， 则除了–privileged， 还需要加上 –net=host。</p>
-<h3 id="方法二-把-proc-sys-bind到容器里面"><a href="#方法二-把-proc-sys-bind到容器里面" class="headerlink" title="方法二 把/proc/sys bind到容器里面"></a>方法二 把/proc/sys bind到容器里面</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"># docker run -v /proc/sys:/writable-sys -it ubuntu bash</span><br></pre></td></tr></table></figure>
-<p>然后写bind到容器内的proc文件</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">echo 62 &gt; /writable-sys/net/ipv4/ip_default_ttl</span><br></pre></td></tr></table></figure>
-<p>注意：  这样操作，效果类似于”–privileged”, 对于namespaced的参数，不会影响host和其他容器。</p>
-<h3 id="方法三-–sysctl"><a href="#方法三-–sysctl" class="headerlink" title="方法三 –sysctl"></a>方法三 –sysctl</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># docker run -it --sysctl &apos;net.ipv4.ip_default_ttl=63&apos; ubuntu sysctl net.ipv4.ip_default_ttl</span><br><span class="line">net.ipv4.ip_default_ttl = 63</span><br></pre></td></tr></table></figure>
-<p>注意:</p>
-<ul>
-<li>只有namespaced参数才可以。否则会报错”invalid argument…”</li>
-<li>这种方式只是在容器初始化过程中完成内核参数的修改，容器运行起来以后，/proc/sys仍然是以只读方式挂载的，在容器中不能再次修改sysctl内核参数。</li>
-</ul>
-<h1 id="kubernetes-与-sysctl"><a href="#kubernetes-与-sysctl" class="headerlink" title="kubernetes 与 sysctl"></a>kubernetes 与 sysctl</h1><h3 id="方法一-通过sysctls和unsafe-sysctls-annotation"><a href="#方法一-通过sysctls和unsafe-sysctls-annotation" class="headerlink" title="方法一 通过sysctls和unsafe-sysctls annotation"></a>方法一 通过sysctls和unsafe-sysctls annotation</h3><p>k8s还进一步把syctl参数分为safe和unsafe。 safe的条件：</p>
-<ul>
-<li>must not have any influence on any other pod on the node</li>
-<li>must not allow to harm the node’s health</li>
-<li>must not allow to gain CPU or memory resources outside of the resource limits of a pod.</li>
-</ul>
-<p>非namespaced的参数，肯定是unsafe。</p>
-<p>namespaced参数，也只有一部分被认为是safe的。</p>
-<p>在pkg/kubelet/sysctl/whitelist.go中维护了safe sysctl参数的名单。在1.7.8的代码中，只有三个参数被认为是safe的：</p>
-<ul>
-<li>kernel.shm_rmid_forced,</li>
-<li>net.ipv4.ip_local_port_range,</li>
-<li>net.ipv4.tcp_syncookies</li>
-</ul>
-<p>如果要设置一个POD中safe参数，通过security.alpha.kubernetes.io/sysctls这个annotation来传递给kubelet。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">metadata:</span><br><span class="line">  name: sysctl-example</span><br><span class="line">  annotations:</span><br><span class="line">    security.alpha.kubernetes.io/sysctls: kernel.shm_rmid_forced=1</span><br></pre></td></tr></table></figure>
-<p>如果要设置一个namespaced， 但是unsafe的参数，要使用另一个annotation: security.alpha.kubernetes.io/unsafe-sysctls， 另外还要给kubelet一个特殊的启动参数。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: v1</span><br><span class="line">kind: Pod</span><br><span class="line">metadata:</span><br><span class="line">  name: sysctl-example</span><br><span class="line">  annotations:</span><br><span class="line">    security.alpha.kubernetes.io/sysctls: kernel.shm_rmid_forced=1</span><br><span class="line">    security.alpha.kubernetes.io/unsafe-sysctls: net.ipv4.route.min_pmtu=1000,kernel.msgmax=1 2 3</span><br><span class="line">spec:</span><br><span class="line">  ...</span><br></pre></td></tr></table></figure>
-<p>kubelet 增加–experimental-allowed-unsafe-sysctls启动参数</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubelet --experimental-allowed-unsafe-sysctls &apos;kernel.msg*,net.ipv4.route.min_pmtu&apos;</span><br></pre></td></tr></table></figure>
-<h3 id="方法二-privileged-POD"><a href="#方法二-privileged-POD" class="headerlink" title="方法二 privileged POD"></a>方法二 privileged POD</h3><p>如果要修改的是非namespaced的参数， 如vm.*， 那就没办法使用以上方法。 可以给POD privileged权限，然后在容器的初始化脚本或代码中去修改sysctl参数。</p>
-<p>创建POD/deployment/daemonset等对象时， 给容器的spec指定securityContext.privileged=true<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">spec:</span><br><span class="line">  containers:</span><br><span class="line">  - image: nginx:alpine</span><br><span class="line">    securityContext:</span><br><span class="line">      privileged: true</span><br></pre></td></tr></table></figure></p>
-<p>这样跟”docker run –privileged”效果一样，在POD中/proc是以”rw”权限mount的，可以直接修改相关sysctl内核参数。</p>
-<h1 id="ulimit"><a href="#ulimit" class="headerlink" title="ulimit"></a>ulimit</h1><p>每个进程都有若干操作系统资源的限制， 可以通过 /proc/$PID/limits 来查看。</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ cat /proc/1/limits </span><br><span class="line">Limit                     Soft Limit           Hard Limit           Units     </span><br><span class="line">Max cpu time              unlimited            unlimited            seconds   </span><br><span class="line">Max file size             unlimited            unlimited            bytes     </span><br><span class="line">Max data size             unlimited            unlimited            bytes     </span><br><span class="line">Max stack size            8388608              unlimited            bytes     </span><br><span class="line">Max core file size        0                    unlimited            bytes     </span><br><span class="line">Max resident set          unlimited            unlimited            bytes     </span><br><span class="line">Max processes             62394                62394                processes </span><br><span class="line">Max open files            1024                 4096                 files     </span><br><span class="line">Max locked memory         65536                65536                bytes     </span><br><span class="line">Max address space         unlimited            unlimited            bytes     </span><br><span class="line">Max file locks            unlimited            unlimited            locks     </span><br><span class="line">Max pending signals       62394                62394                signals   </span><br><span class="line">Max msgqueue size         819200               819200               bytes     </span><br><span class="line">Max nice priority         0                    0                    </span><br><span class="line">Max realtime priority     0                    0                    </span><br><span class="line">Max realtime timeout      unlimited            unlimited            us</span><br></pre></td></tr></table></figure>
-<p>在bash中有个ulimit内部命令，可以查看当前bash进程的这些限制。</p>
-<p>跟ulimit属性相关的配置文件是/etc/security/limits.conf。具体配置项和语法可以通过<code>man limits.conf</code> 命令查看。</p>
-<h3 id="systemd给docker-daemon自身配置ulimit"><a href="#systemd给docker-daemon自身配置ulimit" class="headerlink" title="systemd给docker daemon自身配置ulimit"></a>systemd给docker daemon自身配置ulimit</h3><p>在service文件中(一般是/usr/lib/systemd/system/dockerd.service)中可以配置：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">[Service]</span><br><span class="line">LimitAS=infinity</span><br><span class="line">LimitRSS=infinity</span><br><span class="line">LimitCORE=infinity</span><br><span class="line">LimitNOFILE=65536</span><br><span class="line">ExecStart=...</span><br><span class="line">WorkingDirectory=...</span><br><span class="line">User=...</span><br><span class="line">Group=...</span><br></pre></td></tr></table></figure>
-<h3 id="dockerd-给容器的-缺省ulimit设置"><a href="#dockerd-给容器的-缺省ulimit设置" class="headerlink" title="dockerd 给容器的 缺省ulimit设置"></a>dockerd 给容器的 缺省ulimit设置</h3><p>dockerd –default-ulimit nofile=65536:65536</p>
-<p>冒号前面是soft limit, 后面是hard limit</p>
-<h3 id="给容器指定ulimit设置"><a href="#给容器指定ulimit设置" class="headerlink" title="给容器指定ulimit设置"></a>给容器指定ulimit设置</h3><p>docker run -d –ulimit nofile=20480:40960 nproc=1024:2048 容器名</p>
-<h3 id="在kubernetes中给pod设置ulimit参数"><a href="#在kubernetes中给pod设置ulimit参数" class="headerlink" title="在kubernetes中给pod设置ulimit参数"></a>在kubernetes中给pod设置ulimit参数</h3><p>有一个issue在讨论这个问题： <a href="https://github.com/kubernetes/kubernetes/issues/3595" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/3595</a></p>
-<p>目前可行的办法，是在镜像中的初始化程序中调用setrlimit()系统调用来进行设置。子进程会继承父进程的ulimit参数。</p>
-<h1 id="参考文档："><a href="#参考文档：" class="headerlink" title="参考文档："></a>参考文档：</h1><p><a href="http://tapd.oa.com/CCCM/prong/stories/view/1010166561060564549" target="_blank" rel="noopener">http://tapd.oa.com/CCCM/prong/stories/view/1010166561060564549</a></p>
-<p><a href="https://kubernetes.io/docs/concepts/cluster-administration/sysctl-cluster/" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/cluster-administration/sysctl-cluster/</a></p>
-<p><a href="https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities" target="_blank" rel="noopener">https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities</a></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjv3ifv5r000ab1x02eyfh3ix" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjvf824rd0002npr1lk8b61k1" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1827,7 +1768,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -1838,6 +1779,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
+          </li>
         
           <li>
             <a href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
@@ -1853,10 +1798,6 @@
         
           <li>
             <a href="/2019/04/01/istio-analysis-3/">istio 庖丁解牛(三) galley</a>
-          </li>
-        
-          <li>
-            <a href="/2019/03/19/istio-analysis-2/">istio 庖丁解牛(二) sidecar injector</a>
           </li>
         
       </ul>
