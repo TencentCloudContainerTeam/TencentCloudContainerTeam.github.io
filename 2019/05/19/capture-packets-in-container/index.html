@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>Kubernetes 问题定位技巧：容器内抓包 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 陈鹏 在使用 kubernetes 跑应用的时候，可能会遇到一些网络问题，比较常见的是服务端无响应(超时)或回包内容不正常，如果没找出各种配置上有问题，这时我们需要确认数据包到底有没有最终被路由到容器里，或者报文到达容器的内容和出容器的内容符不符合预期，通过分析报文可以进一步缩小问题范围。那么如何在容器内抓包呢？本文提供实用的脚本一键进入容器网络命名空间(netns)，使用宿主机上的tcp">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kubernetes 问题定位技巧：容器内抓包">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 陈鹏 在使用 kubernetes 跑应用的时候，可能会遇到一些网络问题，比较常见的是服务端无响应(超时)或回包内容不正常，如果没找出各种配置上有问题，这时我们需要确认数据包到底有没有最终被路由到容器里，或者报文到达容器的内容和出容器的内容符不符合预期，通过分析报文可以进一步缩小问题范围。那么如何在容器内抓包呢？本文提供实用的脚本一键进入容器网络命名空间(netns)，使用宿主机上的tcp">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2019-05-19T05:06:26.745Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Kubernetes 问题定位技巧：容器内抓包">
+<meta name="twitter:description" content="作者: 陈鹏 在使用 kubernetes 跑应用的时候，可能会遇到一些网络问题，比较常见的是服务端无响应(超时)或回包内容不正常，如果没找出各种配置上有问题，这时我们需要确认数据包到底有没有最终被路由到容器里，或者报文到达容器的内容和出容器的内容符不符合预期，通过分析报文可以进一步缩小问题范围。那么如何在容器内抓包呢？本文提供实用的脚本一键进入容器网络命名空间(netns)，使用宿主机上的tcp">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-capture-packets-in-container" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/05/19/capture-packets-in-container/" class="article-date">
+  <time datetime="2019-05-19T05:04:00.000Z" itemprop="datePublished">2019-05-19</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      Kubernetes 问题定位技巧：容器内抓包
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<p>在使用 kubernetes 跑应用的时候，可能会遇到一些网络问题，比较常见的是服务端无响应(超时)或回包内容不正常，如果没找出各种配置上有问题，这时我们需要确认数据包到底有没有最终被路由到容器里，或者报文到达容器的内容和出容器的内容符不符合预期，通过分析报文可以进一步缩小问题范围。那么如何在容器内抓包呢？本文提供实用的脚本一键进入容器网络命名空间(netns)，使用宿主机上的tcpdump进行抓包。</p>
+<h2 id="使用脚本一键进入-pod-netns-抓包"><a href="#使用脚本一键进入-pod-netns-抓包" class="headerlink" title="使用脚本一键进入 pod netns 抓包"></a>使用脚本一键进入 pod netns 抓包</h2><ul>
+<li><p>发现某个服务不通，最好将其副本数调为1，并找到这个副本 pod 所在节点和 pod 名称</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl get pod -o wide</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>登录 pod 所在节点，将如下脚本粘贴到 shell (注册函数到当前登录的 shell，我们后面用)</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="function"><span class="title">e</span></span>() &#123;</span><br><span class="line">    <span class="built_in">set</span> -eu</span><br><span class="line">    ns=<span class="variable">$&#123;2-"default"&#125;</span></span><br><span class="line">    pod=`kubectl -n <span class="variable">$ns</span> describe pod <span class="variable">$1</span> | grep -Eo <span class="string">'docker://.*$'</span> | head -n 1 | sed <span class="string">'s/docker:\/\/\(.*\)$/\1/'</span>`</span><br><span class="line">    pid=`docker inspect -f &#123;&#123;.State.Pid&#125;&#125; <span class="variable">$pod</span>`</span><br><span class="line">    <span class="built_in">echo</span> <span class="string">"enter pod netns successfully for <span class="variable">$ns</span>/<span class="variable">$1</span>"</span></span><br><span class="line">    nsenter -n --target <span class="variable">$pid</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>一键进入 pod 所在的 netns，格式：<code>e POD_NAME NAMESPACE</code>，示例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">e istio-galley-58c7c7c646-m6568 istio-system</span><br><span class="line">e proxy-5546768954-9rxg6 <span class="comment"># 省略 NAMESPACE 默认为 default</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>这时已经进入 pod 的 netns，可以执行宿主机上的 <code>ip a</code> 或 <code>ifconfig</code> 来查看容器的网卡，执行 <code>netstat -tunlp</code> 查看当前容器监听了哪些端口，再通过 <code>tcpdump</code> 抓包：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tcpdump -i eth0 -w test.pcap port 80</span><br></pre></td></tr></table></figure>
+</li>
+<li><p><code>ctrl-c</code> 停止抓包，再用 <code>scp</code> 或 <code>sz</code> 将抓下来的包下载到本地使用 <code>wireshark</code> 分析，提供一些常用的 <code>wireshark</code> 过滤语法：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 使用 telnet 连上并发送一些测试文本，比如 "lbtest"，</span></span><br><span class="line"><span class="comment"># 用下面语句可以看发送的测试报文有没有到容器</span></span><br><span class="line">tcp contains <span class="string">"lbtest"</span></span><br><span class="line"><span class="comment"># 如果容器提供的是http服务，可以使用 curl 发送一些测试路径的请求，</span></span><br><span class="line"><span class="comment"># 通过下面语句过滤 uri 看报文有没有都容器</span></span><br><span class="line">http.request.uri==<span class="string">"/mytest"</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="脚本原理"><a href="#脚本原理" class="headerlink" title="脚本原理"></a>脚本原理</h3><p>我们解释下步骤二中用到的脚本的原理</p>
+<ul>
+<li><p>查看指定 pod 运行的容器 ID</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl describe pod &lt;pod&gt; -n mservice</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>获得容器进程的 pid</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker inspect -f &#123;&#123;.State.Pid&#125;&#125; &lt;container&gt;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>进入该容器的 network namespace</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">nsenter -n --target &lt;PID&gt;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>依赖宿主机的命名：<code>kubectl</code>, <code>docker</code>, <code>nsenter</code>, <code>grep</code>, <code>head</code>, <code>sed</code></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjvuhaqbm0002gpy0iawo0spc" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/2019/05/08/kubernetes-best-practice-grace-update/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">kubernetes 最佳实践：优雅热更新</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
+          </li>
+        
+          <li>
+            <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
+          </li>
+        
+          <li>
+            <a href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
+          </li>
+        
+          <li>
+            <a href="/2019/04/17/google-borg/">Google Borg 浅析</a>
+          </li>
+        
+          <li>
+            <a href="/2019/04/07/istio-cni/">Istio 学习笔记：Istio CNI 插件</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
