@@ -7,22 +7,22 @@
   
   <title>Kubernetes 最佳实践：处理内存碎片化 | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/drop_cache">
+  <meta name="description" content="作者: 陈鹏 内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/dro">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Kubernetes 最佳实践：处理内存碎片化">
 <meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/drop_cache">
+<meta property="og:description" content="作者: 陈鹏 内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/dro">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-1.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-2.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-3.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-4.png">
-<meta property="og:updated_time" content="2019-06-06T14:08:51.994Z">
+<meta property="og:updated_time" content="2019-06-06T14:10:12.066Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 最佳实践：处理内存碎片化">
-<meta name="twitter:description" content="内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/drop_cache">
+<meta name="twitter:description" content="作者: 陈鹏 内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/dro">
 <meta name="twitter:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-1.png">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
@@ -92,7 +92,8 @@
     
     <div class="article-entry" itemprop="articleBody">
       
-        <h2 id="内存碎片化造成的危害"><a href="#内存碎片化造成的危害" class="headerlink" title="内存碎片化造成的危害"></a>内存碎片化造成的危害</h2><p>节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中</p>
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="内存碎片化造成的危害"><a href="#内存碎片化造成的危害" class="headerlink" title="内存碎片化造成的危害"></a>内存碎片化造成的危害</h2><p>节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中</p>
 <h2 id="判断是否内存碎片化严重"><a href="#判断是否内存碎片化严重" class="headerlink" title="判断是否内存碎片化严重"></a>判断是否内存碎片化严重</h2><p>内核日志显示：</p>
 <p><img src="images/handle-memory-fragmentation-1.png" alt=""></p>
 <p><img src="images/handle-memory-fragmentation-2.png" alt=""></p>
@@ -118,7 +119,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqlm9m0005jiszhg9uzozb" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqn9fn0005j0vi64jxe3sj" class="article-share-link">Share</a>
       
       
     </footer>
