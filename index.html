@@ -63,10 +63,119 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-kubernetes-best-practice-handle-disk-full" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" class="article-date">
+  <time datetime="2019-06-08T14:07:00.000Z" itemprop="datePublished">2019-06-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<p>容器数据磁盘被写满造成的危害:</p>
+<ul>
+<li>不能创建 Pod (一直 ContainerCreating)</li>
+<li>不能删除 Pod (一直 Terminating)</li>
+</ul>
+<p>判断是否被写满:</p>
+<p>容器数据目录大多会单独挂数据盘，路径一般是 <code>/var/lib/docker</code>，也可能是 <code>/data/docker</code> 或 <code>/opt/docker</code>，取决于节点被添加时的配置：</p>
+<p><img src="images/tke-select-data-disk.png" alt=""></p>
+<p>可通过 <code>docker info</code> 确定：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ docker info</span><br><span class="line">...</span><br><span class="line">Docker Root Dir: /var/lib/docker</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>如果没有单独挂数据盘，则会使用系统盘存储。判断是否被写满：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ df</span><br><span class="line">Filesystem     1K-blocks     Used Available Use% Mounted on</span><br><span class="line">...</span><br><span class="line">/dev/vda1       51474044  4619112  44233548  10% /</span><br><span class="line">...</span><br><span class="line">/dev/vdb        20511356 20511356         0 100% /var/lib/docker</span><br></pre></td></tr></table></figure>
+<h2 id="解决方法"><a href="#解决方法" class="headerlink" title="解决方法"></a>解决方法</h2><h3 id="先恢复业务，清理磁盘空间"><a href="#先恢复业务，清理磁盘空间" class="headerlink" title="先恢复业务，清理磁盘空间"></a>先恢复业务，清理磁盘空间</h3><p>重启 dockerd (清理容器日志输出和可写层文件)</p>
+<ul>
+<li>重启前需要稍微腾出一点空间，不然重启 docker 会失败，可以手动删除一些docker的log文件或可写层文件，通常删除log:</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/containers</span><br><span class="line">$ du -sh * <span class="comment"># 找到比较大的目录</span></span><br><span class="line">$ <span class="built_in">cd</span> dda02c9a7491fa797ab730c1568ba06cba74cecd4e4a82e9d90d00fa11de743c</span><br><span class="line">$ cat /dev/null &gt; dda02c9a7491fa797ab730c1568ba06cba74cecd4e4a82e9d90d00fa11de743c-json.log.9 <span class="comment"># 删除log文件</span></span><br></pre></td></tr></table></figure>
+<p><strong>注意:</strong> 使用 <code>cat /dev/null &gt;</code> 方式删除而不用 <code>rm</code>，因为用 rm 删除的文件，docker 进程可能不会释放文件，空间也就不会释放；log 的后缀数字越大表示越久远，先删除旧日志。</p>
+<ul>
+<li>将该 node 标记不可调度，并将其已有的 pod 驱逐到其它节点，这样重启dockerd就会让该节点的pod对应的容器删掉，容器相关的日志(标准输出)与容器内产生的数据文件(可写层)也会被清理：</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl drain 10.179.80.31</span><br></pre></td></tr></table></figure>
+<ul>
+<li>重启 dockerd:</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">systemctl restart dockerd</span><br></pre></td></tr></table></figure>
+<ul>
+<li>取消不可调度的标记:</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl uncordon 10.179.80.31</span><br></pre></td></tr></table></figure>
+<h3 id="定位根因，彻底解决"><a href="#定位根因，彻底解决" class="headerlink" title="定位根因，彻底解决"></a>定位根因，彻底解决</h3><p>问题定位方法见附录，这里列举根因对应的解决方法：</p>
+<ul>
+<li>日志输出量大导致磁盘写满:<ul>
+<li>减少日志输出</li>
+<li>增大磁盘空间</li>
+<li>减小单机可调度的pod数量</li>
+</ul>
+</li>
+<li>可写层量大导致磁盘写满: 优化程序逻辑，不写文件到容器内或控制写入文件的大小与数量</li>
+<li>镜像占用空间大导致磁盘写满:<ul>
+<li>增大磁盘空间</li>
+<li>删除不需要的镜像</li>
+</ul>
+</li>
+</ul>
+<h2 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h2><h3 id="查看docker的磁盘空间占用情况"><a href="#查看docker的磁盘空间占用情况" class="headerlink" title="查看docker的磁盘空间占用情况"></a>查看docker的磁盘空间占用情况</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ docker system df -v</span><br></pre></td></tr></table></figure>
+<p><img src="images/docker-system-df.png" alt=""></p>
+<h3 id="定位容器写满磁盘的原因"><a href="#定位容器写满磁盘的原因" class="headerlink" title="定位容器写满磁盘的原因"></a>定位容器写满磁盘的原因</h3><p>进入容器数据目录(假设是 <code>/var/lib/docker</code>，并且存储驱动是 aufs):</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
+<p><img src="images/docker-sh-dockerlib.png" alt=""></p>
+<ul>
+<li><code>containers</code> 目录: 体积大说明日志输出量大</li>
+<li><code>aufs</code> 目录</li>
+</ul>
+<p><img src="images/docker-sh-aufs.png" alt=""></p>
+<ul>
+<li><code>diff</code> 子目录: 容器可写层，体积大说明可写层数据量大(程序在容器里写入文件)</li>
+<li><code>mnt</code> 子目录: 联合挂载点，内容为容器里看到的内容，即包含镜像本身内容以及可写层内容</li>
+</ul>
+<h3 id="找出日志输出量大的-pod"><a href="#找出日志输出量大的-pod" class="headerlink" title="找出日志输出量大的 pod"></a>找出日志输出量大的 pod</h3><p>TKE 的 pod 中每个容器输出的日志最大存储 1G (日志轮转，最大10个文件，每个文件最大100m，可用 <code>docker inpect</code> 查看):</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">$ docker inspect fef835ebfc88</span><br><span class="line">[</span><br><span class="line">    &#123;</span><br><span class="line">         ...</span><br><span class="line">        <span class="string">"HostConfig"</span>: &#123;</span><br><span class="line">            ...</span><br><span class="line">            <span class="string">"LogConfig"</span>: &#123;</span><br><span class="line">                <span class="string">"Type"</span>: <span class="string">"json-file"</span>,</span><br><span class="line">                <span class="string">"Config"</span>: &#123;</span><br><span class="line">                    <span class="string">"max-file"</span>: <span class="string">"10"</span>,</span><br><span class="line">                    <span class="string">"max-size"</span>: <span class="string">"100m"</span></span><br><span class="line">                &#125;</span><br><span class="line">            &#125;,</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>查看哪些容器日志输出量大：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/containers</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
+<p><img src="images/du-sh-containers.png" alt=""></p>
+<p>目录名即为容器id，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
+<h3 id="找出可写层数据量大的-pod"><a href="#找出可写层数据量大的-pod" class="headerlink" title="找出可写层数据量大的 pod"></a>找出可写层数据量大的 pod</h3><p>可写层的数据主要是容器内程序自身写入的，无法控制大小，可写层越大说明容器写入的文件越多或越大，通常是容器内程序将log写到文件里了，查看一下哪个容器的可写层数据量大：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/aufs/diff</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
+<p><img src="images/du-sh-diff.png" alt=""><br>通过可写层目录(<code>diff</code>的子目录)反查容器id:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ grep 834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be /var/lib/docker/image/aufs/layerdb/mounts/*/mount-id</span><br><span class="line">/var/lib/docker/image/aufs/layerdb/mounts/eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9/mount-id:834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be</span><br></pre></td></tr></table></figure>
+<p><code>mounts</code> 后面一级的id即为容器id: <code>eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9</code>，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
+<h3 id="找出体积大的镜像"><a href="#找出体积大的镜像" class="headerlink" title="找出体积大的镜像"></a>找出体积大的镜像</h3><p>看看哪些镜像比较占空间</p>
+<p><img src="images/docker-images.png" alt=""></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwkqlma5000ejiszr491zd9v" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-handle-memory-fragmentation" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/06/06/handle-memory-fragmentation/" class="article-date">
-  <time datetime="2019-06-06T13:59:00.000Z" itemprop="datePublished">2019-06-06</time>
+  <time datetime="2019-06-06T14:01:00.000Z" itemprop="datePublished">2019-06-06</time>
 </a>
     
   </div>
@@ -111,7 +220,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqg3sa0005jesm4q1ntvix" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqlm9m0005jiszhg9uzozb" class="article-share-link">Share</a>
       
       
     </footer>
@@ -151,7 +260,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwkqg3sw000fjesm2wks7zs9" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwkqlma9000gjiszktryhzhe" class="article-share-link">Share</a>
       
       
     </footer>
@@ -219,7 +328,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwkqg3s60002jesmnqijfs56" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwkqlm9h0002jisznombotjn" class="article-share-link">Share</a>
       
       
     </footer>
@@ -277,7 +386,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwkqg3st000djesmi716mzek" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwkqlma3000djiszwox3vv6e" class="article-share-link">Share</a>
       
       
     </footer>
@@ -350,7 +459,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwkqg3sv000ejesmgjkvhzw4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwkqlma7000fjiszisaz3n19" class="article-share-link">Share</a>
       
       
     </footer>
@@ -420,7 +529,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwkqg3s90004jesm2l5j12mk" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwkqlm9k0004jiszwarymftf" class="article-share-link">Share</a>
       
       
     </footer>
@@ -489,7 +598,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwkqg3si0009jesmwl8lgrdo" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwkqlm9v0009jisze4hz3bwa" class="article-share-link">Share</a>
       
       
     </footer>
@@ -662,7 +771,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwkqg3sg0008jesm2oqgay5y" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwkqlm9t0008jisz0rotate9" class="article-share-link">Share</a>
       
       
     </footer>
@@ -791,237 +900,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjwkqg3sd0007jesmm3xoxa2s" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-istio-analysis-1" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/03/11/istio-analysis-1/" class="article-date">
-  <time datetime="2019-03-11T07:30:00.000Z" itemprop="datePublished">2019-03-11</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/03/11/istio-analysis-1/">istio 庖丁解牛(一) 组件概览</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imfox.me/" target="_blank" rel="noopener">钟华</a></p>
-<p>Istio 作为 Service Mesh 领域的集大成者, 提供了流控, 安全, 遥测等模型, 其功能复杂, 模块众多,  有较高的学习和使用门槛,  本文会对istio 1.1 的各组件进行分析, 希望能帮助读者了解istio各组件的职责、以及相互的协作关系.</p>
-<meta name="referrer" content="no-referrer">
-
-<h2 id="1-istio-组件构成"><a href="#1-istio-组件构成" class="headerlink" title="1. istio 组件构成"></a>1. istio 组件构成</h2><p>以下是istio 1.1 官方架构图:</p>
-<p><img src="https://preliminary.istio.io/docs/concepts/what-is-istio/arch.svg" width="80%"></p>
-<p>虽然Istio 支持多个平台, 但将其与 Kubernetes 结合使用，其优势会更大, Istio 对Kubernetes 平台支持也是最完善的, 本文将基于Istio + Kubernetes 进行展开.</p>
-<p>如果安装了grafana, prometheus, kiali, jaeger等组件的情况下, 一个完整的控制面组件包括以下pod:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">% kubectl -n istio-system get pod</span><br><span class="line">NAME                                          READY     STATUS</span><br><span class="line">grafana-5f54556df5-s4xr4                      1/1       Running</span><br><span class="line">istio-citadel-775c6cfd6b-8h5gt                1/1       Running</span><br><span class="line">istio-galley-675d75c954-kjcsg                 1/1       Running</span><br><span class="line">istio-ingressgateway-6f7b477cdd-d8zpv         1/1       Running</span><br><span class="line">istio-pilot-7dfdb48fd8-92xgt                  2/2       Running</span><br><span class="line">istio-policy-544967d75b-p6qkk                 2/2       Running</span><br><span class="line">istio-sidecar-injector-5f7894f54f-w7f9v       1/1       Running</span><br><span class="line">istio-telemetry-777876dc5d-msclx              2/2       Running</span><br><span class="line">istio-tracing-5fbc94c494-558fp                1/1       Running</span><br><span class="line">kiali-7c6f4c9874-vzb4t                        1/1       Running</span><br><span class="line">prometheus-66b7689b97-w9glt                   1/1       Running</span><br></pre></td></tr></table></figure>
-<p>将istio系统组件细化到进程级别, 大概是这个样子:</p>
-<p><img src="https://ws3.sinaimg.cn/large/006tKfTcgy1g187gshs79j315m0u0qct.jpg" referrerpolicy="no-referrer"></p>
-<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" referrerpolicy="no-referrer" target="_blank">查看高清原图</a></p>
-<p>Service Mesh 的Sidecar 模式要求对数据面的用户Pod进行代理的注入, 注入的代理容器会去处理服务治理领域的各种「脏活累活」, 使得用户容器可以专心处理业务逻辑.</p>
-<p>从上图可以看出, Istio 控制面本身就是一个复杂的微服务系统, 该系统包含多个组件Pod, 每个组件 各司其职, 既有单容器Pod, 也有多容器Pod, 既有单进程容器, 也有多进程容器,   每个组件会调用不同的命令, 各组件之间会通过RPC进行协作, 共同完成对数据面用户服务的管控.</p>
-<hr>
-<h2 id="2-Istio-源码-镜像和命令"><a href="#2-Istio-源码-镜像和命令" class="headerlink" title="2. Istio 源码, 镜像和命令"></a>2. Istio 源码, 镜像和命令</h2><p>Isito 项目代码主要由以下2个git 仓库组成:</p>
-<table>
-<thead>
-<tr>
-<th>仓库地址</th>
-<th>语言</th>
-<th>模块</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><a href="https://github.com/istio/istio" target="_blank" rel="noopener">https://github.com/istio/istio</a></td>
-<td>Go</td>
-<td>包含istio控制面的大部分组件: pilot, mixer, citadel, galley, sidecar-injector等,</td>
-</tr>
-<tr>
-<td><a href="https://github.com/istio/proxy" target="_blank" rel="noopener">https://github.com/istio/proxy</a></td>
-<td>C++</td>
-<td>包含 istio 使用的边车代理, 这个边车代理包含envoy和mixer client两块功能</td>
-</tr>
-</tbody>
-</table>
-<h3 id="2-1-istio-istio"><a href="#2-1-istio-istio" class="headerlink" title="2.1 istio/istio"></a>2.1 istio/istio</h3><p><a href="https://github.com/istio/istio" target="_blank" rel="noopener">https://github.com/istio/istio</a> 包含的主要的镜像和命令:</p>
-<table>
-<thead>
-<tr>
-<th>容器名</th>
-<th>镜像名</th>
-<th>启动命令</th>
-<th>源码入口</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Istio_init</td>
-<td>istio/proxy_init</td>
-<td>istio-iptables.sh</td>
-<td>istio/tools/deb/istio-iptables.sh</td>
-</tr>
-<tr>
-<td>istio-proxy</td>
-<td>istio/proxyv2</td>
-<td>pilot-agent</td>
-<td>istio/pilot/cmd/pilot-agent</td>
-</tr>
-<tr>
-<td>sidecar-injector-webhook</td>
-<td>istio/sidecar_injector</td>
-<td>sidecar-injector</td>
-<td>istio/pilot/cmd/sidecar-injector</td>
-</tr>
-<tr>
-<td>discovery</td>
-<td>istio/pilot</td>
-<td>pilot-discovery</td>
-<td>istio/pilot/cmd/pilot-discovery</td>
-</tr>
-<tr>
-<td>galley</td>
-<td>istio/galley</td>
-<td>galley</td>
-<td>istio/galley/cmd/galley</td>
-</tr>
-<tr>
-<td>mixer</td>
-<td>istio/mixer</td>
-<td>mixs</td>
-<td>istio/mixer/cmd/mixs</td>
-</tr>
-<tr>
-<td>citadel</td>
-<td>istio/citadel</td>
-<td>istio_ca</td>
-<td>istio/security/cmd/istio_ca</td>
-</tr>
-</tbody>
-</table>
-<p>另外还有2个命令不在上图中使用:</p>
-<table>
-<thead>
-<tr>
-<th>命令</th>
-<th>源码入口</th>
-<th>作用</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>mixc</td>
-<td>istio/mixer/cmd/mixc</td>
-<td>用于和Mixer server 交互的客户端</td>
-</tr>
-<tr>
-<td>node_agent</td>
-<td>istio/security/cmd/node_agent</td>
-<td>用于node上安装安全代理, 这在Mesh Expansion特性中会用到, 即k8s和vm打通.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="2-2-istio-proxy"><a href="#2-2-istio-proxy" class="headerlink" title="2.2 istio/proxy"></a>2.2 istio/proxy</h3><p><a href="https://github.com/istio/proxy" target="_blank" rel="noopener">https://github.com/istio/proxy</a>  该项目本身不会产出镜像, 它可以编译出一个<code>name = &quot;Envoy&quot;</code>的二进制程序, 该二进制程序会被ADD到istio的边车容器镜像<code>istio/proxyv2</code>中.</p>
-<p>istio proxy 项目使用的编译方式是Google出品的bazel,  bazel可以直接在编译中引入第三方库，加载第三方源码.</p>
-<p>这个项目包含了对Envoy源码的引用，还在此基础上进行了扩展，这些扩展是通过Envoy filter（过滤器）的形式来提供，这样做的目的是让边车代理将策略执行决策委托给Mixer，因此可以理解istio proxy 这个项目有2大功能模块:</p>
-<ol>
-<li>Envoy: 使用到Envoy的全部功能</li>
-<li>mixer client: 测量和遥测相关的客户端实现, 基于Envoy做扩展，通过RPC和Mixer server 进行交互,  实现策略管控和遥测</li>
-</ol>
-<p>后续我将对以上各个模块、命令以及它们之间的协作进行探究.</p>
-<hr>
-<h2 id="3-Istio-Pod-概述"><a href="#3-Istio-Pod-概述" class="headerlink" title="3. Istio Pod 概述"></a>3. Istio Pod 概述</h2><h3 id="3-1-数据面用户Pod"><a href="#3-1-数据面用户Pod" class="headerlink" title="3.1 数据面用户Pod"></a>3.1 数据面用户Pod</h3><p>数据面用户Pod注入的内容包括:</p>
-<ol>
-<li><p>initContainer <code>istio-init</code>:  通过配置iptables来劫持Pod中的流量, 转发给envoy</p>
-</li>
-<li><p>sidecar container <code>istio-proxy</code>:  包含2个进程, 父进程pliot-agent 初始化并管控envoy, 子进程envoy除了包含原生envoy的功能外, 还加入了mixer client的逻辑.</p>
-<p>主要端口:</p>
-<ul>
-<li><code>--statusPort</code>  status server 端口, 默认为0, 表示不启动, istio启动时通常传递为15020, 由pliot-agent监听</li>
-<li><code>--proxyAdminPort</code> 代理管理端口, 默认 15000, 由子进程envoy监听.</li>
-</ul>
-</li>
-</ol>
-<h3 id="3-2-istio-sidecar-injector"><a href="#3-2-istio-sidecar-injector" class="headerlink" title="3.2 istio-sidecar-injector"></a>3.2 istio-sidecar-injector</h3><p>包含一个单容器,  <code>sidecar-injector-webhook</code>: 启动一个http server, 接受kube api server 的Admission Webhook 请求, 对用户pod进行sidecar注入.</p>
-<p>进程为<code>sidecar-injector</code>, 主要监听端口:</p>
-<ul>
-<li><code>--port</code> Webhook服务端口,  默认443, 通过k8s service<code>istio-sidecar-injector</code> 对外提供服务.</li>
-</ul>
-<h3 id="3-3-istio-galley"><a href="#3-3-istio-galley" class="headerlink" title="3.3 istio-galley"></a>3.3 istio-galley</h3><p>包含一个单容器 <code>galley</code>: 提供 istio 中的配置管理服务, 验证Istio的CRD 资源的合法性.</p>
-<p>进程为<code>galley server ......</code>, 主要监听端口:</p>
-<ul>
-<li><code>--server-address</code> galley gRPC 地址, 默认是tcp://0.0.0.0:9901</li>
-<li><p><code>--validation-port</code>  https端口, 提供验证crd合法性服务的端口, 默认443.</p>
-</li>
-<li><p><code>--monitoringPort</code> http 端口, self-monitoring 端口, 默认 15014</p>
-</li>
-</ul>
-<p>以上端口通过k8s service<code>istio-galley</code>对外提供服务</p>
-<h3 id="3-4-istio-pilot"><a href="#3-4-istio-pilot" class="headerlink" title="3.4 istio-pilot"></a>3.4 istio-pilot</h3><p>pilot组件核心Pod, 对接平台适配层, 抽象服务注册信息、流量控制模型等, 封装统一的 API，供 Envoy 调用获取.</p>
-<p>包含以下容器:</p>
-<ol>
-<li><p>sidecar container <code>istio-proxy</code></p>
-</li>
-<li><p>container <code>discovery</code>:  进程为<code>pilot-discovery discovery ......</code></p>
-<p>主要监听端口:</p>
-<ul>
-<li>15010: 通过grpc 提供的 xds 获取接口</li>
-<li><p>15011: 通过https 提供的 xds 获取接口</p>
-</li>
-<li><p>8080:  通过http 提供的 xds 获取接口, 兼容v1版本, 另外 http readiness 探针 <code>/ready</code>也在该端口</p>
-</li>
-<li><code>--monitoringPort</code> http self-monitoring 端口, 默认 15014</li>
-</ul>
-<p>以上端口通过k8s service<code>istio-pilot</code>对外提供服务</p>
-</li>
-</ol>
-<h3 id="3-5-istio-telemetry-和istio-policy"><a href="#3-5-istio-telemetry-和istio-policy" class="headerlink" title="3.5 istio-telemetry 和istio-policy"></a>3.5 istio-telemetry 和istio-policy</h3><p>mixer 组件包含2个pod, istio-telemetry 和 istio-policy, istio-telemetry负责遥测功能,  istio-policy 负责策略控制, 它们分别包含2个容器:</p>
-<ol>
-<li><p>sidecar container<code>istio-proxy</code></p>
-</li>
-<li><p><code>mixer</code>: 进程为 <code>mixs server ……</code></p>
-<p>主要监听端口:</p>
-<ul>
-<li>9091: grpc-mixer</li>
-<li><p>15004: grpc-mixer-mtls</p>
-</li>
-<li><p><code>--monitoring-port</code>: http self-monitoring 端口, 默认 15014, liveness 探针<code>/version</code></p>
-</li>
-</ul>
-</li>
-</ol>
-<h3 id="3-7-istio-citadel"><a href="#3-7-istio-citadel" class="headerlink" title="3.7 istio-citadel"></a>3.7 istio-citadel</h3><p>负责安全和证书管理的Pod, 包含一个单容器 <code>citadel</code></p>
-<p>启动命令<code>/usr/local/bin/istio_ca --self-signed-ca ......</code> 主要监听端口:</p>
-<ul>
-<li><p><code>--grpc-port</code> citadel grpc 端口, 默认8060</p>
-</li>
-<li><p><code>--monitoring-port</code>: http self-monitoring 端口, 默认 15014, liveness 探针<code>/version</code></p>
-</li>
-</ul>
-<p>以上端口通过k8s service<code>istio-citadel</code>对外提供服务</p>
-<hr>
-<p>后续将对各组件逐一进行分析.</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjwkqg3sb0006jesm34ii9l2z" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjwkqlm9q0007jisz0rzme8qb" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1067,6 +946,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
           </li>
         
@@ -1080,10 +963,6 @@
         
           <li>
             <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
-          </li>
-        
-          <li>
-            <a href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
           </li>
         
       </ul>

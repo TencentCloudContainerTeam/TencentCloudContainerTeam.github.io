@@ -19,7 +19,7 @@
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-2.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-3.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-4.png">
-<meta property="og:updated_time" content="2019-06-06T14:04:38.383Z">
+<meta property="og:updated_time" content="2019-06-06T14:08:51.994Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 最佳实践：处理内存碎片化">
 <meta name="twitter:description" content="内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/drop_cache">
@@ -73,7 +73,7 @@
         <section id="main"><article id="post-handle-memory-fragmentation" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/06/06/handle-memory-fragmentation/" class="article-date">
-  <time datetime="2019-06-06T13:59:00.000Z" itemprop="datePublished">2019-06-06</time>
+  <time datetime="2019-06-06T14:01:00.000Z" itemprop="datePublished">2019-06-06</time>
 </a>
     
   </div>
@@ -118,7 +118,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqg3sa0005jesm4q1ntvix" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqlm9m0005jiszhg9uzozb" class="article-share-link">Share</a>
       
       
     </footer>
@@ -126,6 +126,15 @@
   
     
 <nav id="article-nav">
+  
+    <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          kubernetes 最佳实践：处理容器数据磁盘被写满
+        
+      </div>
+    </a>
   
   
     <a href="/2019/06/06/scale-keepalive-service/" id="article-nav-older" class="article-nav-link-wrap">
@@ -167,6 +176,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
           </li>
         
@@ -180,10 +193,6 @@
         
           <li>
             <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
-          </li>
-        
-          <li>
-            <a href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
           </li>
         
       </ul>
