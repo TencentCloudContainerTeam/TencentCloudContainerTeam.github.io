@@ -8,12 +8,13 @@ date: 2019/06/08 22:07:00
 容器数据磁盘被写满造成的危害:
 - 不能创建 Pod (一直 ContainerCreating)
 - 不能删除 Pod (一直 Terminating)
+- 无法 exec 到容器
 
 判断是否被写满:
 
 容器数据目录大多会单独挂数据盘，路径一般是 `/var/lib/docker`，也可能是 `/data/docker` 或 `/opt/docker`，取决于节点被添加时的配置：
 
-![](images/tke-select-data-disk.png)
+![](https://imroc.io/assets/blog/tke-select-data-disk.png)
 
 可通过 `docker info` 确定：
 
@@ -83,7 +84,7 @@ kubectl uncordon 10.179.80.31
 $ docker system df -v
 ```
 
-![](images/docker-system-df.png)
+![](https://imroc.io/assets/blog/docker-system-df.png)
 
 ### 定位容器写满磁盘的原因
 进入容器数据目录(假设是 `/var/lib/docker`，并且存储驱动是 aufs):
@@ -93,12 +94,12 @@ $ cd /var/lib/docker
 $ du -sh *
 ```
 
-![](images/docker-sh-dockerlib.png)
+![](https://imroc.io/assets/blog/docker-sh-dockerlib.png)
 
 - `containers` 目录: 体积大说明日志输出量大
 -  `aufs` 目录
 
-![](images/docker-sh-aufs.png)
+![](https://imroc.io/assets/blog/docker-sh-aufs.png)
   - `diff` 子目录: 容器可写层，体积大说明可写层数据量大(程序在容器里写入文件)
   - `mnt` 子目录: 联合挂载点，内容为容器里看到的内容，即包含镜像本身内容以及可写层内容
 
@@ -128,7 +129,7 @@ $ cd /var/lib/docker/containers
 $ du -sh *
 ```
 
-![](images/du-sh-containers.png)
+![](https://imroc.io/assets/blog/du-sh-containers.png)
 
 目录名即为容器id，使用前几位与 `docker ps` 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼
 
@@ -140,7 +141,7 @@ $ cd /var/lib/docker/aufs/diff
 $ du -sh *
 ```
 
-![](images/du-sh-diff.png)
+![](https://imroc.io/assets/blog/du-sh-diff.png)
 通过可写层目录(`diff`的子目录)反查容器id:
 
 ``` bash
@@ -152,4 +153,4 @@ $ grep 834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be /var/lib
 ### 找出体积大的镜像
 看看哪些镜像比较占空间
 
-![](images/docker-images.png)
+![](https://imroc.io/assets/blog/docker-images.png)
