@@ -22,7 +22,7 @@
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/images/du-sh-containers.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/images/du-sh-diff.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/images/docker-images.png">
-<meta property="og:updated_time" content="2019-06-06T14:10:12.066Z">
+<meta property="og:updated_time" content="2019-06-09T14:15:26.214Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes 最佳实践：处理容器数据磁盘被写满">
 <meta name="twitter:description" content="作者: 陈鹏 容器数据磁盘被写满造成的危害:  不能创建 Pod (一直 ContainerCreating) 不能删除 Pod (一直 Terminating)  判断是否被写满: 容器数据目录大多会单独挂数据盘，路径一般是 /var/lib/docker，也可能是 /data/docker 或 /opt/docker，取决于节点被添加时的配置：  可通过 docker info 确定： 123">
@@ -172,7 +172,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwkqn9g5000ej0vipn31luyb" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp15iyp000egzsudxjelacz" class="article-share-link">Share</a>
       
       
     </footer>
@@ -180,6 +180,15 @@
   
     
 <nav id="article-nav">
+  
+    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包
+        
+      </div>
+    </a>
   
   
     <a href="/2019/06/06/handle-memory-fragmentation/" id="article-nav-older" class="article-nav-link-wrap">
@@ -221,6 +230,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
           </li>
         
@@ -234,10 +247,6 @@
         
           <li>
             <a href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
           </li>
         
       </ul>

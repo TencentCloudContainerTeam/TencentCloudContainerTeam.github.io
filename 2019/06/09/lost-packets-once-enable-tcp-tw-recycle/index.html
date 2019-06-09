@@ -5,20 +5,20 @@
   
 
   
-  <title>开源组件 | 腾讯云容器团队</title>
+  <title>Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包 | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="腾讯云容器团队现有开源组件：  基于 csi 的 kubernetes volume 插件 基于 cni 的 bridge 插件 适配黑石负载均衡的 ingress 插件 适配腾讯云 cvm/clb/vpc 的 kubernetes cloud-controller-manager">
+  <meta name="description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
-<meta property="og:title" content="开源组件">
-<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/index.html">
+<meta property="og:title" content="Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="腾讯云容器团队现有开源组件：  基于 csi 的 kubernetes volume 插件 基于 cni 的 bridge 插件 适配黑石负载均衡的 ingress 插件 适配腾讯云 cvm/clb/vpc 的 kubernetes cloud-controller-manager">
+<meta property="og:description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2019-06-09T14:15:26.230Z">
+<meta property="og:updated_time" content="2019-06-09T14:15:26.214Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="开源组件">
-<meta name="twitter:description" content="腾讯云容器团队现有开源组件：  基于 csi 的 kubernetes volume 插件 基于 cni 的 bridge 插件 适配黑石负载均衡的 ingress 插件 适配腾讯云 cvm/clb/vpc 的 kubernetes cloud-controller-manager">
+<meta name="twitter:title" content="Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包">
+<meta name="twitter:description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
   
@@ -65,10 +65,10 @@
   </div>
 </header>
       <div class="outer">
-        <section id="main"><article id="post-开源项目" class="article article-type-post" itemscope="" itemprop="blogPost">
+        <section id="main"><article id="post-lost-packets-once-enable-tcp-tw-recycle" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
-    <a href="/2018/10/21/开源项目/" class="article-date">
-  <time datetime="2018-10-21T10:27:56.000Z" itemprop="datePublished">2018-10-21</time>
+    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" class="article-date">
+  <time datetime="2019-06-09T14:00:00.000Z" itemprop="datePublished">2019-06-09</time>
 </a>
     
   </div>
@@ -79,7 +79,7 @@
         
   
     <h1 class="article-title" itemprop="name">
-      开源组件
+      Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包
     </h1>
   
 
@@ -87,18 +87,27 @@
     
     <div class="article-entry" itemprop="articleBody">
       
-        <p>腾讯云容器团队现有开源组件：</p>
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="原因"><a href="#原因" class="headerlink" title="原因"></a>原因</h2><p>tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述：</p>
+<p><code>An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connection. This value could then be used in the PAWS mechanism to reject old duplicate segments from earlier incarnations of the connection, if the timestamp clock can be guaranteed to have ticked at least once since the old connection was open. This would require that the TIME-WAIT delay plus the RTT together must be at least one tick of the sender’s timestamp clock. Such an extension is not part of the proposal of this RFC.</code></p>
 <ul>
-<li>基于 csi 的 <a href="https://github.com/TencentCloud/kubernetes-csi-tencentcloud" target="_blank" rel="noopener">kubernetes volume 插件</a></li>
-<li>基于 cni 的 <a href="https://github.com/TencentCloud/cni-bridge-networking" target="_blank" rel="noopener">bridge 插件</a></li>
-<li>适配黑石负载均衡的 <a href="https://github.com/TencentCloud/ingress-tke-bm" target="_blank" rel="noopener">ingress 插件</a></li>
-<li>适配腾讯云 cvm/clb/vpc 的 <a href="https://github.com/TencentCloud/tencentcloud-cloud-controller-manager" target="_blank" rel="noopener">kubernetes cloud-controller-manager</a></li>
+<li><p>大概意思是说TCP有一种行为，可以缓存每个连接最新的时间戳，后续请求中如果时间戳小于缓存的时间戳，即视为无效，相应的数据包会被丢弃。</p>
+</li>
+<li><p>Linux是否启用这种行为取决于tcp_timestamps和tcp_tw_recycle，因为tcp_timestamps缺省就是开启的，所以当tcp_tw_recycle被开启后，实际上这种行为就被激活了，当客户端或服务端以NAT方式构建的时候就可能出现问题，下面以客户端NAT为例来说明：</p>
+</li>
+<li><p>当多个客户端通过NAT方式联网并与服务端交互时，服务端看到的是同一个IP，也就是说对服务端而言这些客户端实际上等同于一个，可惜由于这些客户端的时间戳可能存在差异，于是乎从服务端的视角看，便可能出现时间戳错乱的现象，进而直接导致时间戳小的数据包被丢弃。如果发生了此类问题，具体的表现通常是是客户端明明发送的SYN，但服务端就是不响应ACK。</p>
+</li>
+<li><p>在4.12之后的内核已移除tcp_tw_recycle内核参数: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc</a> <a href="https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc</a></p>
+</li>
+</ul>
+<h2 id="TKE中-使用-NAT-的场景"><a href="#TKE中-使用-NAT-的场景" class="headerlink" title="TKE中 使用 NAT 的场景"></a>TKE中 使用 NAT 的场景</h2><ul>
+<li>跨 VPC 访问(通过对等连接、云联网、专线等方式打通)，会做 SNAT</li>
 </ul>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/21/开源项目/" data-id="cjwp15iyy000jgzsufzf1uy0u" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp15iyt000ggzsuewez8l8g" class="article-share-link">Share</a>
       
       
     </footer>
@@ -107,15 +116,11 @@
     
 <nav id="article-nav">
   
-    <a href="/2018/10/26/DNS-5-seconds-delay/" id="article-nav-newer" class="article-nav-link-wrap">
-      <strong class="article-nav-caption">Newer</strong>
-      <div class="article-nav-title">
-        
-          kubernetes集群中夺命的5秒DNS延迟
-        
-      </div>
-    </a>
   
+    <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">kubernetes 最佳实践：处理容器数据磁盘被写满</div>
+    </a>
   
 </nav>
 

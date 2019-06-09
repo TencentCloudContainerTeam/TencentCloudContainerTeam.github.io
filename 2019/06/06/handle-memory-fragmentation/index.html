@@ -19,7 +19,7 @@
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-2.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-3.png">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/2019/06/06/handle-memory-fragmentation/images/handle-memory-fragmentation-4.png">
-<meta property="og:updated_time" content="2019-06-06T14:10:12.066Z">
+<meta property="og:updated_time" content="2019-06-09T14:15:26.214Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 最佳实践：处理内存碎片化">
 <meta name="twitter:description" content="作者: 陈鹏 内存碎片化造成的危害节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中 判断是否内存碎片化严重内核日志显示：   进一步查看的系统内存：  查看slab：  解决方法 周期性地或者在发现大块内存不足时，先进行drop_cache操作: 1echo 3 &amp;gt; /proc/sys/vm/dro">
@@ -119,7 +119,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqn9fn0005j0vi64jxe3sj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp15iy50005gzsu19wbgsq2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -177,6 +177,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
           </li>
         
@@ -190,10 +194,6 @@
         
           <li>
             <a href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
           </li>
         
       </ul>

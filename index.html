@@ -63,6 +63,58 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-lost-packets-once-enable-tcp-tw-recycle" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" class="article-date">
+  <time datetime="2019-06-09T14:00:00.000Z" itemprop="datePublished">2019-06-09</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="原因"><a href="#原因" class="headerlink" title="原因"></a>原因</h2><p>tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述：</p>
+<p><code>An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connection. This value could then be used in the PAWS mechanism to reject old duplicate segments from earlier incarnations of the connection, if the timestamp clock can be guaranteed to have ticked at least once since the old connection was open. This would require that the TIME-WAIT delay plus the RTT together must be at least one tick of the sender’s timestamp clock. Such an extension is not part of the proposal of this RFC.</code></p>
+<ul>
+<li><p>大概意思是说TCP有一种行为，可以缓存每个连接最新的时间戳，后续请求中如果时间戳小于缓存的时间戳，即视为无效，相应的数据包会被丢弃。</p>
+</li>
+<li><p>Linux是否启用这种行为取决于tcp_timestamps和tcp_tw_recycle，因为tcp_timestamps缺省就是开启的，所以当tcp_tw_recycle被开启后，实际上这种行为就被激活了，当客户端或服务端以NAT方式构建的时候就可能出现问题，下面以客户端NAT为例来说明：</p>
+</li>
+<li><p>当多个客户端通过NAT方式联网并与服务端交互时，服务端看到的是同一个IP，也就是说对服务端而言这些客户端实际上等同于一个，可惜由于这些客户端的时间戳可能存在差异，于是乎从服务端的视角看，便可能出现时间戳错乱的现象，进而直接导致时间戳小的数据包被丢弃。如果发生了此类问题，具体的表现通常是是客户端明明发送的SYN，但服务端就是不响应ACK。</p>
+</li>
+<li><p>在4.12之后的内核已移除tcp_tw_recycle内核参数: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc</a> <a href="https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc</a></p>
+</li>
+</ul>
+<h2 id="TKE中-使用-NAT-的场景"><a href="#TKE中-使用-NAT-的场景" class="headerlink" title="TKE中 使用 NAT 的场景"></a>TKE中 使用 NAT 的场景</h2><ul>
+<li>跨 VPC 访问(通过对等连接、云联网、专线等方式打通)，会做 SNAT</li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp15iyt000ggzsuewez8l8g" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-kubernetes-best-practice-handle-disk-full" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" class="article-date">
@@ -162,7 +214,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwkqn9g5000ej0vipn31luyb" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp15iyp000egzsudxjelacz" class="article-share-link">Share</a>
       
       
     </footer>
@@ -221,7 +273,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwkqn9fn0005j0vi64jxe3sj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp15iy50005gzsu19wbgsq2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -261,7 +313,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwkqn9g9000gj0vimt04te71" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwp15iyv000hgzsuaaz9cgx4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -329,7 +381,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwkqn9fj0002j0viluchs5cc" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwp15iy10002gzsuxtfeftf5" class="article-share-link">Share</a>
       
       
     </footer>
@@ -387,7 +439,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwkqn9g3000dj0vi0xfll36g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwp15iyn000dgzsuxx66jhmi" class="article-share-link">Share</a>
       
       
     </footer>
@@ -460,7 +512,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwkqn9g7000fj0vickz8al0u" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwp15iyr000fgzsusi0ef1l4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -530,7 +582,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwkqn9fl0004j0vikd6b9sqv" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwp15iy40004gzsu0z6bosc4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -599,7 +651,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwkqn9fw0009j0vispy7ov3w" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwp15iye0009gzsut4sfyrmu" class="article-share-link">Share</a>
       
       
     </footer>
@@ -772,136 +824,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwkqn9ft0008j0vir6lbu7l8" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-istio-analysis-2" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/03/19/istio-analysis-2/" class="article-date">
-  <time datetime="2019-03-19T07:30:00.000Z" itemprop="datePublished">2019-03-19</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/03/19/istio-analysis-2/">istio 庖丁解牛(二) sidecar injector</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imfox.io/" target="_blank" rel="noopener">钟华</a></p>
-<p>今天我们分析下istio-sidecar-injector 组件:</p>
-<p><img src="https://ws1.sinaimg.cn/large/006tKfTcgy1g187i5bzkpj315q0u07dq.jpg" referrerpolicy="no-referrer"></p>
-<p><a href="https://ws4.sinaimg.cn/large/006tKfTcgy1g187dn7s1tj315m0u0x6t.jpg" referrerpolicy="no-referrer" target="_blank">查看高清原图</a></p>
-<p>用户空间的Pod要想加入mesh, 首先需要注入sidecar 容器, istio 提供了2种方式实现注入:</p>
-<ul>
-<li>自动注入: 利用 <a href="https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/" target="_blank" rel="noopener">Kubernetes Dynamic Admission Webhooks</a> 对 新建的pod 进行注入: initContainer + sidecar</li>
-<li>手动注入: 使用命令<code>istioctl kube-inject</code></li>
-</ul>
-<p>「注入」本质上就是修改Pod的资源定义, 添加相应的sidecar容器定义, 内容包括2个新容器:</p>
-<ul>
-<li>名为<code>istio-init</code>的initContainer: 通过配置iptables来劫持Pod中的流量</li>
-<li>名为<code>istio-proxy</code>的sidecar容器: 两个进程pilot-agent和envoy, pilot-agent 进行初始化并启动envoy</li>
-</ul>
-<p><img src="https://ws4.sinaimg.cn/large/006tKfTcgy1g187flw0dmj30wq0grn0b.jpg" referrerpolicy="no-referrer"></p>
-<hr>
-<h2 id="1-Dynamic-Admission-Control"><a href="#1-Dynamic-Admission-Control" class="headerlink" title="1. Dynamic Admission Control"></a>1. Dynamic Admission Control</h2><p>kubernetes 的准入控制(Admission Control)有2种:</p>
-<ul>
-<li>Built in Admission Control: 这些Admission模块可以选择性地编译进api server, 因此需要修改和重启kube-apiserver</li>
-<li>Dynamic Admission Control: 可以部署在kube-apiserver之外, 同时无需修改或重启kube-apiserver.</li>
-</ul>
-<p>其中, Dynamic Admission Control 包含2种形式:</p>
-<ul>
-<li>Admission Webhooks: 该controller 提供http server, 被动接受kube-apiserver分发的准入请求.</li>
-<li><p>Initializers: 该controller主动list and watch 关注的资源对象, 对watch到的未初始化对象进行相应的改造.</p>
-<p>其中, Admission Webhooks 又包含2种准入控制:</p>
-</li>
-<li><p>ValidatingAdmissionWebhook</p>
-</li>
-<li>MutatingAdmissionWebhook</li>
-</ul>
-<p>istio 使用了MutatingAdmissionWebhook来实现对用户Pod的注入,  首先需要保证以下条件满足:</p>
-<ul>
-<li>确保 kube-apiserver 启动参数 开启了 MutatingAdmissionWebhook</li>
-<li>给namespace 增加 label: <code>kubectl label namespace default istio-injection=enabled</code></li>
-<li>同时还要保证 kube-apiserver 的 aggregator layer 开启: <code>--enable-aggregator-routing=true</code> 且证书和api server连通性正确设置.</li>
-</ul>
-<p>另外还需要一个配置对象, 来告诉kube-apiserver istio关心的资源对象类型, 以及webhook的服务地址. 如果使用helm安装istio, 配置对象已经添加好了, 查阅MutatingWebhookConfiguration:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">% kubectl get mutatingWebhookConfiguration -oyaml</span><br><span class="line">- apiVersion: admissionregistration.k8s.io/v1beta1</span><br><span class="line">  kind: MutatingWebhookConfiguration</span><br><span class="line">  metadata:</span><br><span class="line">    name: istio-sidecar-injector</span><br><span class="line">  webhooks:</span><br><span class="line">    - clientConfig:</span><br><span class="line">      service:</span><br><span class="line">        name: istio-sidecar-injector</span><br><span class="line">        namespace: istio-system</span><br><span class="line">        path: /inject</span><br><span class="line">    name: sidecar-injector.istio.io</span><br><span class="line">    namespaceSelector:</span><br><span class="line">      matchLabels:</span><br><span class="line">        istio-injection: enabled</span><br><span class="line">    rules:</span><br><span class="line">    - apiGroups:</span><br><span class="line">      - &quot;&quot;</span><br><span class="line">      apiVersions:</span><br><span class="line">      - v1</span><br><span class="line">      operations:</span><br><span class="line">      - CREATE</span><br><span class="line">      resources:</span><br><span class="line">      - pods</span><br></pre></td></tr></table></figure>
-<p>该配置告诉kube-apiserver: 命名空间istio-system 中的服务 <code>istio-sidecar-injector</code>(默认443端口), 通过路由<code>/inject</code>, 处理<code>v1/pods</code>的CREATE, 同时pod需要满足命名空间<code>istio-injection: enabled</code>, 当有符合条件的pod被创建时, kube-apiserver就会对该服务发起调用, 服务返回的内容正是添加了sidecar注入的pod定义.</p>
-<hr>
-<h2 id="2-Sidecar-注入内容分析"><a href="#2-Sidecar-注入内容分析" class="headerlink" title="2. Sidecar 注入内容分析"></a>2. Sidecar 注入内容分析</h2><p>查看Pod <code>istio-sidecar-injector</code>的yaml定义:</p>
-<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">%kubectl</span> <span class="bullet">-n</span> <span class="string">istio-system</span> <span class="string">get</span> <span class="string">pod</span> <span class="string">istio-sidecar-injector-5f7894f54f-w7f9v</span> <span class="bullet">-oyaml</span></span><br><span class="line"><span class="string">......</span></span><br><span class="line"><span class="attr">    volumeMounts:</span></span><br><span class="line"><span class="attr">    - mountPath:</span> <span class="string">/etc/istio/inject</span></span><br><span class="line"><span class="attr">      name:</span> <span class="string">inject-config</span></span><br><span class="line"><span class="attr">      readOnly:</span> <span class="literal">true</span></span><br><span class="line"></span><br><span class="line"><span class="attr">  volumes:</span></span><br><span class="line"><span class="attr">  - configMap:</span></span><br><span class="line"><span class="attr">      items:</span></span><br><span class="line"><span class="attr">      - key:</span> <span class="string">config</span></span><br><span class="line"><span class="attr">        path:</span> <span class="string">config</span></span><br><span class="line"><span class="attr">      name:</span> <span class="string">istio-sidecar-injector</span></span><br><span class="line"><span class="attr">    name:</span> <span class="string">inject-config</span></span><br></pre></td></tr></table></figure>
-<p>可以看到该Pod利用<a href="https://kubernetes.io/docs/concepts/storage/volumes/#projected" target="_blank" rel="noopener">projected volume</a>将<code>istio-sidecar-injector</code>这个config map 的config挂到了自己容器路径<code>/etc/istio/inject/config</code>, 该config map 内容正是注入用户空间pod所需的模板.</p>
-<p>如果使用helm安装istio, 该 configMap 模板源码位于: <a href="https://github.com/istio/istio/blob/master/install/kubernetes/helm/istio/templates/sidecar-injector-configmap.yaml" target="_blank" rel="noopener">https://github.com/istio/istio/blob/master/install/kubernetes/helm/istio/templates/sidecar-injector-configmap.yaml</a>.</p>
-<p>该config map 是在安装istio时添加的, kubernetes 会自动维护 projected volume的更新, 因此 容器 <code>sidecar-injector</code>只需要从本地文件直接读取所需配置.</p>
-<p>高级用户可以按需修改这个模板内容.</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl -n istio-system get configmap istio-sidecar-injector -o=jsonpath=&apos;&#123;.data.config&#125;&apos;</span><br></pre></td></tr></table></figure>
-<p>查看该configMap, <code>data.config</code>包含以下内容(简化):</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line">policy: enabled // 是否开启自动注入</span><br><span class="line">template: |-    // 使用go template 定义的pod patch</span><br><span class="line">  initContainers:</span><br><span class="line">  [[ if ne (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) &quot;NONE&quot; ]]</span><br><span class="line">  - name: istio-init</span><br><span class="line">    image: &quot;docker.io/istio/proxy_init:1.1.0&quot;</span><br><span class="line">    ......</span><br><span class="line">    securityContext:</span><br><span class="line">      capabilities:</span><br><span class="line">        add:</span><br><span class="line">        - NET_ADMIN</span><br><span class="line">    ......</span><br><span class="line">  containers:</span><br><span class="line">  - name: istio-proxy</span><br><span class="line">    args:</span><br><span class="line">    - proxy</span><br><span class="line">    - sidecar</span><br><span class="line">    ......</span><br><span class="line">    image: [[ annotation .ObjectMeta `sidecar.istio.io/proxyImage`  &quot;docker.io/istio/proxyv2:1.1.0&quot;  ]]</span><br><span class="line">    ......</span><br><span class="line">    readinessProbe:</span><br><span class="line">      httpGet:</span><br><span class="line">        path: /healthz/ready</span><br><span class="line">        port: [[ annotation .ObjectMeta `status.sidecar.istio.io/port`  0  ]]</span><br><span class="line">    ......</span><br><span class="line">    securityContext:</span><br><span class="line">      capabilities:</span><br><span class="line">        add:</span><br><span class="line">        - NET_ADMIN</span><br><span class="line">      runAsGroup: 1337</span><br><span class="line">  ......</span><br><span class="line">    volumeMounts:</span><br><span class="line">    ......</span><br><span class="line">    - mountPath: /etc/istio/proxy</span><br><span class="line">      name: istio-envoy</span><br><span class="line">    - mountPath: /etc/certs/</span><br><span class="line">      name: istio-certs</span><br><span class="line">      readOnly: true</span><br><span class="line">      ......</span><br><span class="line">  volumes:</span><br><span class="line">  ......</span><br><span class="line">  - emptyDir:</span><br><span class="line">      medium: Memory</span><br><span class="line">    name: istio-envoy</span><br><span class="line">  - name: istio-certs</span><br><span class="line">    secret:</span><br><span class="line">      optional: true</span><br><span class="line">      [[ if eq .Spec.ServiceAccountName &quot;&quot; -]]</span><br><span class="line">      secretName: istio.default</span><br><span class="line">      [[ else -]]</span><br><span class="line">      secretName: [[ printf &quot;istio.%s&quot; .Spec.ServiceAccountName ]]</span><br><span class="line">      ......</span><br></pre></td></tr></table></figure>
-<p>对istio-init生成的部分参数分析:</p>
-<ul>
-<li><code>-u 1337</code> 排除用户ID为1337，即Envoy自身的流量</li>
-<li>解析用户容器<code>.Spec.Containers</code>, 获得容器的端口列表, 传入<code>-b</code>参数(入站端口控制)</li>
-<li>指定要从重定向到 Envoy 中排除（可选）的入站端口列表, 默认写入<code>-d 15020</code>, 此端口是sidecar的status server</li>
-<li>赋予该容器<code>NET_ADMIN</code> 能力, 允许容器istio-init进行网络管理操作</li>
-</ul>
-<p>对istio-proxy 生成的部分参数分析:</p>
-<ul>
-<li>启动参数<code>proxy sidecar xxx</code> 用以定义该节点的代理类型(NodeType)</li>
-<li>默认的status server 端口<code>--statusPort=15020</code></li>
-<li>解析用户容器<code>.Spec.Containers</code>, 获取用户容器的application Ports, 然后设置到sidecar的启动参数<code>--applicationPorts</code>中, 该参数会最终传递给envoy, 用以确定哪些端口流量属于该业务容器.</li>
-<li>设置<code>/healthz/ready</code> 作为该代理的readinessProbe</li>
-<li>同样赋予该容器<code>NET_ADMIN</code>能力</li>
-</ul>
-<p>另外<code>istio-sidecar-injector</code>还给容器<code>istio-proxy</code>挂了2个volumes:</p>
-<ul>
-<li><p>名为<code>istio-envoy</code>的emptydir volume, 挂载到容器目录<code>/etc/istio/proxy</code>, 作为envoy的配置文件目录</p>
-</li>
-<li><p>名为<code>istio-certs</code>的secret volume, 默认secret名为<code>istio.default</code>,  挂载到容器目录<code>/etc/certs/</code>, 存放相关的证书, 包括服务端证书, 和可能的mtls客户端证书</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">% kubectl exec productpage-v1-6597cb5df9-xlndw -c istio-proxy -- ls /etc/certs/</span><br><span class="line">cert-chain.pem</span><br><span class="line">key.pem</span><br><span class="line">root-cert.pem</span><br></pre></td></tr></table></figure>
-</li>
-</ul>
-<p>后续文章探究sidecar <code>istio-proxy</code>会对其进一步分析.</p>
-<hr>
-<h2 id="3-istio-sidecar-injector-webhook-源码分析"><a href="#3-istio-sidecar-injector-webhook-源码分析" class="headerlink" title="3. istio-sidecar-injector-webhook 源码分析"></a>3. istio-sidecar-injector-webhook 源码分析</h2><ul>
-<li>镜像Dockerfile: <code>istio/pilot/docker/Dockerfile.sidecar_injector</code></li>
-<li>启动命令: <code>/sidecar-injector</code></li>
-<li>命令源码: <code>istio/pilot/cmd/sidecar-injector</code></li>
-</ul>
-<p>容器中命令/sidecar-injector启动参数如下:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">- args:</span><br><span class="line">  - --caCertFile=/etc/istio/certs/root-cert.pem</span><br><span class="line">  - --tlsCertFile=/etc/istio/certs/cert-chain.pem</span><br><span class="line">  - --tlsKeyFile=/etc/istio/certs/key.pem</span><br><span class="line">  - --injectConfig=/etc/istio/inject/config</span><br><span class="line">  - --meshConfig=/etc/istio/config/mesh</span><br><span class="line">  - --healthCheckInterval=2s</span><br><span class="line">  - --healthCheckFile=/health</span><br></pre></td></tr></table></figure>
-<p><code>sidecar-injector</code> 的核心数据模型是 <code>Webhook</code>struct, 注入配置sidecarConfig包括注入模板以及注入开关和规则:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">type Webhook struct &#123;</span><br><span class="line">	mu                     sync.RWMutex</span><br><span class="line">	sidecarConfig          *Config // 注入配置: 模板,开关,规则</span><br><span class="line">	sidecarTemplateVersion string</span><br><span class="line">	meshConfig             *meshconfig.MeshConfig</span><br><span class="line"></span><br><span class="line">	healthCheckInterval time.Duration</span><br><span class="line">	healthCheckFile     string</span><br><span class="line"></span><br><span class="line">	server     *http.Server</span><br><span class="line">	meshFile   string</span><br><span class="line">	configFile string            // 注入内容路径, 从启动参数injectConfig中获取</span><br><span class="line">	watcher    *fsnotify.Watcher // 基于文件系统的notifications</span><br><span class="line">	certFile   string</span><br><span class="line">	keyFile    string</span><br><span class="line">	cert       *tls.Certificate</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">type Config struct &#123;</span><br><span class="line">	Policy InjectionPolicy `json:&quot;policy&quot;`</span><br><span class="line">	Template string `json:&quot;template&quot;`</span><br><span class="line">	NeverInjectSelector []metav1.LabelSelector `json:&quot;neverInjectSelector&quot;`</span><br><span class="line">	AlwaysInjectSelector []metav1.LabelSelector `json:&quot;alwaysInjectSelector&quot;`</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p><code>sidecar-injector</code> 的root cmd 会创建一个<code>Webhook</code>, 该struct包含一个http server, 并将路由<code>/inject</code>注册到处理器函数<code>serveInject</code></p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">RunE: func(c *cobra.Command, _ []string) error &#123;</span><br><span class="line">    ......</span><br><span class="line">    wh, err := inject.NewWebhook(parameters)</span><br><span class="line">    ......</span><br><span class="line">    go wh.Run(stop)</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func NewWebhook(p WebhookParameters) (*Webhook, error) &#123;</span><br><span class="line">    ......</span><br><span class="line">	watcher, err := fsnotify.NewWatcher()</span><br><span class="line">	// watch the parent directory of the target files so we can catch</span><br><span class="line">	// symlink updates of k8s ConfigMaps volumes.</span><br><span class="line">	for _, file := range []string&#123;p.ConfigFile, p.MeshFile, p.CertFile, p.KeyFile&#125; &#123;</span><br><span class="line">		watchDir, _ := filepath.Split(file)</span><br><span class="line">		if err := watcher.Watch(watchDir); err != nil &#123;</span><br><span class="line">			return nil, fmt.Errorf(&quot;could not watch %v: %v&quot;, file, err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	......</span><br><span class="line">	h := http.NewServeMux()</span><br><span class="line">	h.HandleFunc(&quot;/inject&quot;, wh.serveInject)</span><br><span class="line">	wh.server.Handler = h</span><br><span class="line">	......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p><code>Webhook#Run</code>方法会启动该http server, 并负责响应配置文件的更新:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">func (wh *Webhook) Run(stop &lt;-chan struct&#123;&#125;) &#123;</span><br><span class="line">	go func() &#123;</span><br><span class="line">		wh.server.ListenAndServeTLS(&quot;&quot;, &quot;&quot;)</span><br><span class="line">		......</span><br><span class="line">	&#125;()</span><br><span class="line">	......</span><br><span class="line">	var timerC &lt;-chan time.Time</span><br><span class="line">	for &#123;</span><br><span class="line">		select &#123;</span><br><span class="line">		case &lt;-timerC:</span><br><span class="line">			timerC = nil</span><br><span class="line">			sidecarConfig, meshConfig, err := loadConfig(wh.configFile, wh.meshFile)</span><br><span class="line">			......</span><br><span class="line">		case event := &lt;-wh.watcher.Event:</span><br><span class="line">			// use a timer to debounce configuration updates</span><br><span class="line">			if (event.IsModify() || event.IsCreate()) &amp;&amp; timerC == nil &#123;</span><br><span class="line">				timerC = time.After(watchDebounceDelay)</span><br><span class="line">			&#125;</span><br><span class="line">		case ......</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p><code>Webhook#Run</code>首先会启动处理注入请求的http server, 下面的for循环主要是处理2个配置文件的更新操作, select 里使用了一个timer(并不是ticker), 咋一看像是简单的定时更新配置文件, 其实不然. 配置文件更新事件由<code>wh.watcher</code>进行接收, 然后才会启动timer, 这里用到了第三方库<a href="https://github.com/howeyc/fsnotify" target="_blank" rel="noopener">https://github.com/howeyc/fsnotify</a>, 这是一个基于文件系统的notification. 这里使用timer限制在一个周期(watchDebounceDelay)里面最多重新加载一次配置文件, 避免在配置文件频繁变化的情况下多次触发不必要的loadConfig</p>
-<blockquote>
-<p>use a timer to debounce configuration updates</p>
-</blockquote>
-<p><code>Webhook.serveInject</code> 会调用<code>Webhook#inject</code>, 最终的模板处理函数是<code>injectionData</code>.</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjwkqn9fr0007j0vizo25hu0p" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwp15iya0008gzsux7u2y7ov" class="article-share-link">Share</a>
       
       
     </footer>
@@ -947,6 +870,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
           </li>
         
@@ -960,10 +887,6 @@
         
           <li>
             <a href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/05/08/kubernetes-best-practice-grace-update/">kubernetes 最佳实践：优雅热更新</a>
           </li>
         
       </ul>
