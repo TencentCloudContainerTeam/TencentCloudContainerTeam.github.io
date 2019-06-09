@@ -105,7 +105,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp1fm54000ggsvsis3v4xib" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp1hmzl000ggovus43na4kc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -215,7 +215,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp1fm50000egsvstxyx9yjx" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp1hmzh000egovuakawrweg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -250,12 +250,12 @@
         <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
 <h2 id="内存碎片化造成的危害"><a href="#内存碎片化造成的危害" class="headerlink" title="内存碎片化造成的危害"></a>内存碎片化造成的危害</h2><p>节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中</p>
 <h2 id="判断是否内存碎片化严重"><a href="#判断是否内存碎片化严重" class="headerlink" title="判断是否内存碎片化严重"></a>判断是否内存碎片化严重</h2><p>内核日志显示：</p>
-<p><img src="images/handle-memory-fragmentation-1.png" alt=""></p>
-<p><img src="images/handle-memory-fragmentation-2.png" alt=""></p>
-<p>进一步查看的系统内存：</p>
-<p><img src="images/handle-memory-fragmentation-3.png" alt=""></p>
-<p>查看slab：</p>
-<p><img src="images/handle-memory-fragmentation-4.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-1.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-2.png" alt=""></p>
+<p>进一步查看的系统内存(cache多可能是io导致的，为了提高io效率留下的缓存，这部分内存实际是可以释放的)：</p>
+<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-3.png" alt=""></p>
+<p>查看slab (后面的0多表示伙伴系统没有大块内存了)：</p>
+<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-4.png" alt=""></p>
 <h2 id="解决方法"><a href="#解决方法" class="headerlink" title="解决方法"></a>解决方法</h2><ul>
 <li><p>周期性地或者在发现大块内存不足时，先进行drop_cache操作:</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 3 &gt; /proc/sys/vm/drop_caches</span><br></pre></td></tr></table></figure>
@@ -274,7 +274,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp1fm4g0005gsvszcarc40i" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp1hmyx0005govullrhsqir" class="article-share-link">Share</a>
       
       
     </footer>
@@ -314,7 +314,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwp1fm56000hgsvsajqc8nav" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwp1hmzm000hgovurr1jsyl6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -382,7 +382,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwp1fm4b0002gsvsvu4umssi" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwp1hmyt0002govuf2sjqcmq" class="article-share-link">Share</a>
       
       
     </footer>
@@ -440,7 +440,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwp1fm4y000dgsvsr5b97506" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwp1hmzf000dgovuvmuxadqp" class="article-share-link">Share</a>
       
       
     </footer>
@@ -513,7 +513,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwp1fm52000fgsvsfhtnti06" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwp1hmzj000fgovuam46fcx6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -583,7 +583,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwp1fm4e0004gsvs39u3eccp" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwp1hmyw0004govu487wd3b2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -652,7 +652,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwp1fm4q0009gsvssazfnttm" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwp1hmz60009govu1gndqgy0" class="article-share-link">Share</a>
       
       
     </footer>
@@ -825,7 +825,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwp1fm4n0008gsvszoui3nw7" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwp1hmz40008govu0hr3tflv" class="article-share-link">Share</a>
       
       
     </footer>
