@@ -12,17 +12,17 @@ date: 2019/06/06 22:01:00
 
 内核日志显示：
 
-![](images/handle-memory-fragmentation-1.png)
+![](https://imroc.io/assets/blog/handle-memory-fragmentation-1.png)
 
-![](images/handle-memory-fragmentation-2.png)
+![](https://imroc.io/assets/blog/handle-memory-fragmentation-2.png)
 
-进一步查看的系统内存：
+进一步查看的系统内存(cache多可能是io导致的，为了提高io效率留下的缓存，这部分内存实际是可以释放的)：
 
-![](images/handle-memory-fragmentation-3.png)
+![](https://imroc.io/assets/blog/handle-memory-fragmentation-3.png)
 
-查看slab：
+查看slab (后面的0多表示伙伴系统没有大块内存了)：
 
-![](images/handle-memory-fragmentation-4.png)
+![](https://imroc.io/assets/blog/handle-memory-fragmentation-4.png)
 
 ## 解决方法
 - 周期性地或者在发现大块内存不足时，先进行drop_cache操作:
