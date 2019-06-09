@@ -105,7 +105,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp15iyt000ggzsuewez8l8g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjwp1fm54000ggsvsis3v4xib" class="article-share-link">Share</a>
       
       
     </footer>
@@ -142,10 +142,11 @@
 <ul>
 <li>不能创建 Pod (一直 ContainerCreating)</li>
 <li>不能删除 Pod (一直 Terminating)</li>
+<li>无法 exec 到容器</li>
 </ul>
 <p>判断是否被写满:</p>
 <p>容器数据目录大多会单独挂数据盘，路径一般是 <code>/var/lib/docker</code>，也可能是 <code>/data/docker</code> 或 <code>/opt/docker</code>，取决于节点被添加时的配置：</p>
-<p><img src="images/tke-select-data-disk.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/tke-select-data-disk.png" alt=""></p>
 <p>可通过 <code>docker info</code> 确定：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ docker info</span><br><span class="line">...</span><br><span class="line">Docker Root Dir: /var/lib/docker</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
 <p>如果没有单独挂数据盘，则会使用系统盘存储。判断是否被写满：</p>
@@ -184,15 +185,15 @@
 </li>
 </ul>
 <h2 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h2><h3 id="查看docker的磁盘空间占用情况"><a href="#查看docker的磁盘空间占用情况" class="headerlink" title="查看docker的磁盘空间占用情况"></a>查看docker的磁盘空间占用情况</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ docker system df -v</span><br></pre></td></tr></table></figure>
-<p><img src="images/docker-system-df.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/docker-system-df.png" alt=""></p>
 <h3 id="定位容器写满磁盘的原因"><a href="#定位容器写满磁盘的原因" class="headerlink" title="定位容器写满磁盘的原因"></a>定位容器写满磁盘的原因</h3><p>进入容器数据目录(假设是 <code>/var/lib/docker</code>，并且存储驱动是 aufs):</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="images/docker-sh-dockerlib.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/docker-sh-dockerlib.png" alt=""></p>
 <ul>
 <li><code>containers</code> 目录: 体积大说明日志输出量大</li>
 <li><code>aufs</code> 目录</li>
 </ul>
-<p><img src="images/docker-sh-aufs.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/docker-sh-aufs.png" alt=""></p>
 <ul>
 <li><code>diff</code> 子目录: 容器可写层，体积大说明可写层数据量大(程序在容器里写入文件)</li>
 <li><code>mnt</code> 子目录: 联合挂载点，内容为容器里看到的内容，即包含镜像本身内容以及可写层内容</li>
@@ -201,20 +202,20 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">$ docker inspect fef835ebfc88</span><br><span class="line">[</span><br><span class="line">    &#123;</span><br><span class="line">         ...</span><br><span class="line">        <span class="string">"HostConfig"</span>: &#123;</span><br><span class="line">            ...</span><br><span class="line">            <span class="string">"LogConfig"</span>: &#123;</span><br><span class="line">                <span class="string">"Type"</span>: <span class="string">"json-file"</span>,</span><br><span class="line">                <span class="string">"Config"</span>: &#123;</span><br><span class="line">                    <span class="string">"max-file"</span>: <span class="string">"10"</span>,</span><br><span class="line">                    <span class="string">"max-size"</span>: <span class="string">"100m"</span></span><br><span class="line">                &#125;</span><br><span class="line">            &#125;,</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
 <p>查看哪些容器日志输出量大：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/containers</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="images/du-sh-containers.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/du-sh-containers.png" alt=""></p>
 <p>目录名即为容器id，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
 <h3 id="找出可写层数据量大的-pod"><a href="#找出可写层数据量大的-pod" class="headerlink" title="找出可写层数据量大的 pod"></a>找出可写层数据量大的 pod</h3><p>可写层的数据主要是容器内程序自身写入的，无法控制大小，可写层越大说明容器写入的文件越多或越大，通常是容器内程序将log写到文件里了，查看一下哪个容器的可写层数据量大：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/aufs/diff</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="images/du-sh-diff.png" alt=""><br>通过可写层目录(<code>diff</code>的子目录)反查容器id:</p>
+<p><img src="https://imroc.io/assets/blog/du-sh-diff.png" alt=""><br>通过可写层目录(<code>diff</code>的子目录)反查容器id:</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ grep 834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be /var/lib/docker/image/aufs/layerdb/mounts/*/mount-id</span><br><span class="line">/var/lib/docker/image/aufs/layerdb/mounts/eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9/mount-id:834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be</span><br></pre></td></tr></table></figure>
 <p><code>mounts</code> 后面一级的id即为容器id: <code>eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9</code>，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
 <h3 id="找出体积大的镜像"><a href="#找出体积大的镜像" class="headerlink" title="找出体积大的镜像"></a>找出体积大的镜像</h3><p>看看哪些镜像比较占空间</p>
-<p><img src="images/docker-images.png" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/docker-images.png" alt=""></p>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp15iyp000egzsudxjelacz" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjwp1fm50000egsvstxyx9yjx" class="article-share-link">Share</a>
       
       
     </footer>
@@ -273,7 +274,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp15iy50005gzsu19wbgsq2" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjwp1fm4g0005gsvszcarc40i" class="article-share-link">Share</a>
       
       
     </footer>
@@ -313,7 +314,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwp15iyv000hgzsuaaz9cgx4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjwp1fm56000hgsvsajqc8nav" class="article-share-link">Share</a>
       
       
     </footer>
@@ -381,7 +382,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwp15iy10002gzsuxtfeftf5" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjwp1fm4b0002gsvsvu4umssi" class="article-share-link">Share</a>
       
       
     </footer>
@@ -439,7 +440,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwp15iyn000dgzsuxx66jhmi" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjwp1fm4y000dgsvsr5b97506" class="article-share-link">Share</a>
       
       
     </footer>
@@ -512,7 +513,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwp15iyr000fgzsusi0ef1l4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjwp1fm52000fgsvsfhtnti06" class="article-share-link">Share</a>
       
       
     </footer>
@@ -582,7 +583,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwp15iy40004gzsu0z6bosc4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjwp1fm4e0004gsvs39u3eccp" class="article-share-link">Share</a>
       
       
     </footer>
@@ -651,7 +652,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwp15iye0009gzsut4sfyrmu" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjwp1fm4q0009gsvssazfnttm" class="article-share-link">Share</a>
       
       
     </footer>
@@ -824,7 +825,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwp15iya0008gzsux7u2y7ov" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjwp1fm4n0008gsvszoui3nw7" class="article-share-link">Share</a>
       
       
     </footer>
