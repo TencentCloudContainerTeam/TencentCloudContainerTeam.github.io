@@ -5,20 +5,20 @@
   
 
   
-  <title>Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包 | 腾讯云容器团队</title>
+  <title>Kubernetes 问题排查：Pod 状态一直 Terminating | 腾讯云容器团队</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
+  <meta name="description" content="作者: 陈鹏 查看 Pod 事件: 1$ kubectl describe pod/apigateway-6dc48bf8b6-clcwk -n cn-staging Need to kill Pod1Normal  Killing  39s (x735 over 15h)  kubelet, 10.179.80.31  Killing container with id docker://api">
 <meta name="keywords" content="container kubernetes tencentcloud">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包">
-<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/index.html">
+<meta property="og:title" content="Kubernetes 问题排查：Pod 状态一直 Terminating">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/index.html">
 <meta property="og:site_name" content="腾讯云容器团队">
-<meta property="og:description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
+<meta property="og:description" content="作者: 陈鹏 查看 Pod 事件: 1$ kubectl describe pod/apigateway-6dc48bf8b6-clcwk -n cn-staging Need to kill Pod1Normal  Killing  39s (x735 over 15h)  kubelet, 10.179.80.31  Killing container with id docker://api">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:updated_time" content="2019-06-20T12:38:47.440Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包">
-<meta name="twitter:description" content="作者: 陈鹏 原因tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述： An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connec">
+<meta name="twitter:title" content="Kubernetes 问题排查：Pod 状态一直 Terminating">
+<meta name="twitter:description" content="作者: 陈鹏 查看 Pod 事件: 1$ kubectl describe pod/apigateway-6dc48bf8b6-clcwk -n cn-staging Need to kill Pod1Normal  Killing  39s (x735 over 15h)  kubelet, 10.179.80.31  Killing container with id docker://api">
   
     <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
   
@@ -65,10 +65,10 @@
   </div>
 </header>
       <div class="outer">
-        <section id="main"><article id="post-lost-packets-once-enable-tcp-tw-recycle" class="article article-type-post" itemscope="" itemprop="blogPost">
+        <section id="main"><article id="post-pod-terminating-forever" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
-    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" class="article-date">
-  <time datetime="2019-06-09T14:00:00.000Z" itemprop="datePublished">2019-06-09</time>
+    <a href="/2019/06/20/pod-terminating-forever/" class="article-date">
+  <time datetime="2019-06-20T12:35:00.000Z" itemprop="datePublished">2019-06-20</time>
 </a>
     
   </div>
@@ -79,7 +79,7 @@
         
   
     <h1 class="article-title" itemprop="name">
-      Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包
+      Kubernetes 问题排查：Pod 状态一直 Terminating
     </h1>
   
 
@@ -88,26 +88,25 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<h2 id="原因"><a href="#原因" class="headerlink" title="原因"></a>原因</h2><p>tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述：</p>
-<p><code>An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connection. This value could then be used in the PAWS mechanism to reject old duplicate segments from earlier incarnations of the connection, if the timestamp clock can be guaranteed to have ticked at least once since the old connection was open. This would require that the TIME-WAIT delay plus the RTT together must be at least one tick of the sender’s timestamp clock. Such an extension is not part of the proposal of this RFC.</code></p>
+<p>查看 Pod 事件:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl describe pod/apigateway-6dc48bf8b6-clcwk -n cn-staging</span><br></pre></td></tr></table></figure>
+<h3 id="Need-to-kill-Pod"><a href="#Need-to-kill-Pod" class="headerlink" title="Need to kill Pod"></a>Need to kill Pod</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Normal  Killing  39s (x735 over 15h)  kubelet, 10.179.80.31  Killing container with id docker://apigateway:Need to <span class="built_in">kill</span> Pod</span><br></pre></td></tr></table></figure>
+<p>可能是磁盘满了，无法创建和删除 pod</p>
+<p>处理建议是参考Kubernetes 最佳实践：<a href="https://tencentcloudcontainerteam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/">处理容器数据磁盘被写满</a></p>
+<h3 id="DeadlineExceeded"><a href="#DeadlineExceeded" class="headerlink" title="DeadlineExceeded"></a>DeadlineExceeded</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Warning FailedSync 3m (x408 over 1h) kubelet, 10.179.80.31 error determining status: rpc error: code = DeadlineExceeded desc = context deadline exceeded</span><br></pre></td></tr></table></figure>
+<p>怀疑是17版本dockerd的BUG。可通过 <code>kubectl -n cn-staging delete pod apigateway-6dc48bf8b6-clcwk --force --grace-period=0</code> 强制删除pod，但 <code>docker ps</code> 仍看得到这个容器</p>
+<p>处置建议：</p>
 <ul>
-<li><p>大概意思是说TCP有一种行为，可以缓存每个连接最新的时间戳，后续请求中如果时间戳小于缓存的时间戳，即视为无效，相应的数据包会被丢弃。</p>
-</li>
-<li><p>Linux是否启用这种行为取决于tcp_timestamps和tcp_tw_recycle，因为tcp_timestamps缺省就是开启的，所以当tcp_tw_recycle被开启后，实际上这种行为就被激活了，当客户端或服务端以NAT方式构建的时候就可能出现问题，下面以客户端NAT为例来说明：</p>
-</li>
-<li><p>当多个客户端通过NAT方式联网并与服务端交互时，服务端看到的是同一个IP，也就是说对服务端而言这些客户端实际上等同于一个，可惜由于这些客户端的时间戳可能存在差异，于是乎从服务端的视角看，便可能出现时间戳错乱的现象，进而直接导致时间戳小的数据包被丢弃。如果发生了此类问题，具体的表现通常是是客户端明明发送的SYN，但服务端就是不响应ACK。</p>
-</li>
-<li><p>在4.12之后的内核已移除tcp_tw_recycle内核参数: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc</a> <a href="https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc</a></p>
-</li>
+<li>升级到docker 18. 该版本使用了新的 containerd，针对很多bug进行了修复。</li>
+<li>如果出现terminating状态的话，可以提供让容器专家进行排查，不建议直接强行删除，会可能导致一些业务上问题。</li>
 </ul>
-<h2 id="TKE中-使用-NAT-的场景"><a href="#TKE中-使用-NAT-的场景" class="headerlink" title="TKE中 使用 NAT 的场景"></a>TKE中 使用 NAT 的场景</h2><ul>
-<li>跨 VPC 访问(通过对等连接、云联网、专线等方式打通)，会做 SNAT</li>
-</ul>
+<h3 id="存在-Finalizers"><a href="#存在-Finalizers" class="headerlink" title="存在 Finalizers"></a>存在 Finalizers</h3><p>k8s 资源的 metadata 里如果存在 <code>finalizers</code>，那么该资源一般是由某程序创建的，并且在其创建的资源的 metadata 里的 <code>finalizers</code> 加了一个它的标识，这意味着这个资源被删除时需要由创建资源的程序来做删除前的清理，清理完了它需要将标识从该资源的 <code>finalizers</code> 中移除，然后才会最终彻底删除资源。比如 Rancher 创建的一些资源就会写入 <code>finalizers</code> 标识。</p>
+<p>处理建议：<code>kubectl edit</code> 手动编辑资源定义，删掉 <code>finalizers</code>，这时再看下资源，就会发现已经删掉了</p>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjx4njof9000gjnnlgkssw3ij" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="cjx4njofa000hjnnltukhliiv" class="article-share-link">Share</a>
       
       
     </footer>
@@ -116,19 +115,10 @@
     
 <nav id="article-nav">
   
-    <a href="/2019/06/20/pod-terminating-forever/" id="article-nav-newer" class="article-nav-link-wrap">
-      <strong class="article-nav-caption">Newer</strong>
-      <div class="article-nav-title">
-        
-          Kubernetes 问题排查：Pod 状态一直 Terminating
-        
-      </div>
-    </a>
   
-  
-    <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" id="article-nav-older" class="article-nav-link-wrap">
+    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" id="article-nav-older" class="article-nav-link-wrap">
       <strong class="article-nav-caption">Older</strong>
-      <div class="article-nav-title">kubernetes 最佳实践：处理容器数据磁盘被写满</div>
+      <div class="article-nav-title">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</div>
     </a>
   
 </nav>

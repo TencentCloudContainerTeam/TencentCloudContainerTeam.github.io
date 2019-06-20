@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者: 洪志国 前言绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。  一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。 一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。 故障表现腾讯云SCF(Serverless Cloud F">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2019-06-09T14:24:49.979Z">
+<meta property="og:updated_time" content="2019-06-20T12:38:47.440Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Cgroup泄漏--潜藏在你的集群中">
 <meta name="twitter:description" content="作者: 洪志国 前言绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。  一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。 一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。 故障表现腾讯云SCF(Serverless Cloud F">
@@ -150,7 +150,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjwp1hmyu0003govu7muo3gj2" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjx4njoem0003jnnle1oxjnwc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -208,6 +208,10 @@
       <ul>
         
           <li>
+            <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
+          </li>
+        
+          <li>
             <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
           </li>
         
@@ -221,10 +225,6 @@
         
           <li>
             <a href="/2019/06/06/scale-keepalive-service/">Kubernetes 最佳实践：解决长连接服务扩容失效</a>
-          </li>
-        
-          <li>
-            <a href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
           </li>
         
       </ul>
