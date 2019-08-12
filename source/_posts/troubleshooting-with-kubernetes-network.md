@@ -74,7 +74,7 @@ Linux 是否启用这种行为取决于 `tcp_timestamps` 和 `tcp_tw_recycle`，
 
 client 抓包: 大量SYN重传。
 
-server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 嫩收到 SYN 包但没有响应。
+server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 能收到 SYN 包但没有响应。
 
 <!-- `netstat -s | grep LISTEN`  查得大量 SYN 被丢弃。 -->
 ![](https://imroc.io/assets/meme/emoji_analysis.png)
@@ -224,9 +224,9 @@ Unix 系的 OS 下，除了 openbsd， go runtime 会读取 `/etc/nsswitch.conf`
 
 ![](https://imroc.io/assets/blog/troubleshooting-k8s-network/hostLookupDNSFiles.png)
 
-![](https://imroc.io/assets/meme/emoji_jizhi.png)
-
 所以虽然 alpine 用的 musl libc 不是 glibc，但 go 程序解析域名还是一样走的 glibc 的逻辑，而 alpine 没有 `/etc/nsswitch.conf` 文件，也就解释了为什么 kubectl 访问 apiserver 先做 dns 解析，没解析到再查的 hosts，导致每次访问都去请求 dns，恰好又碰到 conntrack 那个丢包问题导致 dns 5s 延时，在用户这里表现就是 pod 内用 kubectl 访问 apiserver 偶尔出现 5s 延时，有时出现 10s 是因为重试的那次 dns 请求刚好也遇到 conntrack 丢包导致延时又叠加了 5s 。
+
+![](https://imroc.io/assets/meme/emoji_jizhi.png)
 
 解决方案:
 
@@ -458,3 +458,7 @@ LB 类型 Service 的 status 里有 ingress IP，实际就是 `kubectl get servi
 
 仔细一想，确实可行，打算有空实现下，重新提个 PR:
 ![](https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-prerouting.png)
+
+## 结语
+
+至此，我们一起完成了一段奇妙的问题排查之旅，信息量很大并且比较复杂，有些没看懂很正常，但我希望你可以收藏起来反复阅读，一起在技术的道路上打怪升级。
