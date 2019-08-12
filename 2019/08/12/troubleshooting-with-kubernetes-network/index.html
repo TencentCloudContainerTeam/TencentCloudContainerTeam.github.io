@@ -48,7 +48,7 @@
 <meta property="og:image" content="https://imroc.io/assets/blog/troubleshooting-k8s-network/aws-lb-snat.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-iptables.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-prerouting.png">
-<meta property="og:updated_time" content="2019-08-12T09:04:48.460Z">
+<meta property="og:updated_time" content="2019-08-12T11:38:30.967Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 网络疑难杂症排查分享">
 <meta name="twitter:description" content="大家好，我是 roc，来自腾讯云容器服务(TKE)团队，经常帮助用户解决各种 K8S 的疑难杂症，积累了比较丰富的经验，本文分享几个比较复杂的网络方面的问题排查和解决思路，深入分析并展开相关知识，信息量巨大，相关经验不足的同学可能需要细细品味才能消化，我建议收藏本文反复研读，当完全看懂后我相信你的功底会更加扎实，解决问题的能力会大大提升。  本文发现的问题是在使用 TKE 时遇到的，不同厂商的网络">
@@ -160,7 +160,7 @@
 <h2 id="LB-压测-CPS-低"><a href="#LB-压测-CPS-低" class="headerlink" title="LB 压测 CPS 低"></a>LB 压测 CPS 低</h2><p>现象: LoadBalancer 类型的 Service，直接压测 NodePort CPS 比较高，但如果压测 LB CPS 就很低。</p>
 <p>环境说明: 用户使用的黑石TKE，不是公有云TKE，黑石的机器是物理机，LB的实现也跟公有云不一样，但 LoadBalancer 类型的 Service 的实现同样也是 LB 绑定各节点的 NodePort，报文发到 LB 后转到节点的 NodePort， 然后再路由到对应 pod，而测试在公有云 TKE 环境下没有这个问题。</p>
 <p>client 抓包: 大量SYN重传。</p>
-<p>server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 嫩收到 SYN 包但没有响应。</p>
+<p>server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 能收到 SYN 包但没有响应。</p>
 <!-- `netstat -s | grep LISTEN`  查得大量 SYN 被丢弃。 -->
 <p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
 <p>又是 SYN 收到但没响应，难道又是开启 <code>tcp_tw_recycle</code> 导致的？检查节点的内核参数发现并没有开启，除了这个原因，还会有什么情况能导致被丢弃？</p>
@@ -228,8 +228,8 @@
 <p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/hostLookupOrder.png" alt=""></p>
 <p>可以看到 <code>hostLookupDNSFiles</code> 的意思是 dns first (<code>net/dnsclient_unix.go</code>):</p>
 <p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/hostLookupDNSFiles.png" alt=""></p>
-<p><img src="https://imroc.io/assets/meme/emoji_jizhi.png" alt=""></p>
 <p>所以虽然 alpine 用的 musl libc 不是 glibc，但 go 程序解析域名还是一样走的 glibc 的逻辑，而 alpine 没有 <code>/etc/nsswitch.conf</code> 文件，也就解释了为什么 kubectl 访问 apiserver 先做 dns 解析，没解析到再查的 hosts，导致每次访问都去请求 dns，恰好又碰到 conntrack 那个丢包问题导致 dns 5s 延时，在用户这里表现就是 pod 内用 kubectl 访问 apiserver 偶尔出现 5s 延时，有时出现 10s 是因为重试的那次 dns 请求刚好也遇到 conntrack 丢包导致延时又叠加了 5s 。</p>
+<p><img src="https://imroc.io/assets/meme/emoji_jizhi.png" alt=""></p>
 <p>解决方案:</p>
 <ol>
 <li>换基础镜像，不用 alpine</li>
@@ -356,11 +356,12 @@
 <p>我提了 <a href="https://github.com/kubernetes/kubernetes/pull/79976" target="_blank" rel="noopener">#79976</a> 这个 PR 可以解决问题: 给 kube-proxy 加 <code>--exclude-external-ip</code> 这个 flag 控制是否为 LB IP<br>创建 ipvs 规则和绑定 <code>kube-ipvs0</code>。</p>
 <p>但有人担心增加 kube-proxy flag 会增加 kube-proxy 的调试复杂度，看能否在 iptables 层面解决:<br><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-iptables.png" alt=""></p>
 <p>仔细一想，确实可行，打算有空实现下，重新提个 PR:<br><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-prerouting.png" alt=""></p>
+<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>至此，我们一起完成了一段奇妙的问题排查之旅，信息量很大并且比较复杂，有些没看懂很正常，但我希望你可以收藏起来反复阅读，一起在技术的道路上打怪升级。</p>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="cjz868qsg000kakqgnb7sdw0u" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="cjz8bq9yj000kfixtkgntl9p4" class="article-share-link">Share</a>
       
       
     </footer>
