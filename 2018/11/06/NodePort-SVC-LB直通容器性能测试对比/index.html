@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   svc(通过k8s 的clusterip 访问) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2019-06-20T12:38:47.440Z">
+<meta property="og:updated_time" content="2019-08-12T09:04:48.444Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="NodePort, svc, LB直通Pod性能测试对比">
 <meta name="twitter:description" content="作者：郭志宏  1. 测试背景：目前基于k8s 服务的外网访问方式有以下几种：  NodePort   svc(通过k8s 的clusterip 访问) 自研 LB -&amp;gt; Pod （比如pod ip 作为 nginx 的 upstream, 或者社区的nginx-ingress）  其中第一种和第二种方案都要经过iptables 转发，第三种方案不经过iptables，本测试主要是为了测试这">
@@ -296,7 +296,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjx4njoei0001jnnlzrg2s5y9" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjz868qrh0001akqga14wo4g2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -341,7 +341,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -352,6 +352,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
+          </li>
         
           <li>
             <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
@@ -367,10 +371,6 @@
         
           <li>
             <a href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
-          </li>
-        
-          <li>
-            <a href="/2019/06/06/scale-keepalive-service/">Kubernetes 最佳实践：解决长连接服务扩容失效</a>
           </li>
         
       </ul>

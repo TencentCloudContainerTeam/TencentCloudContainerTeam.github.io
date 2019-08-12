@@ -63,6 +63,75 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-istio-cni" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/04/07/istio-cni/" class="article-date">
+  <time datetime="2019-04-07T04:20:00.000Z" itemprop="datePublished">2019-04-07</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/04/07/istio-cni/">Istio 学习笔记：Istio CNI 插件</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="设计目标"><a href="#设计目标" class="headerlink" title="设计目标"></a>设计目标</h2><p>当前实现将用户 pod 流量转发到 proxy 的默认方式是使用 privileged 权限的 istio-init 这个 init container 来做的（运行脚本写入 iptables），Istio CNI 插件的主要设计目标是消除这个 privileged 权限的 init container，换成利用 k8s CNI 机制来实现相同功能的替代方案</p>
+<h2 id="原理"><a href="#原理" class="headerlink" title="原理"></a>原理</h2><ul>
+<li>Istio CNI Plugin 不是 istio 提出类似 k8s CNI 的插件扩展机制，而是 k8s CNI 的一个具体实现</li>
+<li>k8s CNI 插件是一条链，在创建和销毁pod的时候会调用链上所有插件来安装和卸载容器的网络，istio CNI Plugin 即为 CNI 插件的一个实现，相当于在创建销毁pod这些hook点来针对istio的pod做网络配置：写入iptables，让该 pod 所在的 network namespace 的网络流量转发到 proxy 进程</li>
+<li>当然也就要求集群启用 CNI，kubelet 启动参数: <code>--network-plugin=cni</code> （该参数只有两个可选项：<code>kubenet</code>, <code>cni</code>）</li>
+</ul>
+<h2 id="实现方式"><a href="#实现方式" class="headerlink" title="实现方式"></a>实现方式</h2><ul>
+<li>运行一个名为 istio-cni-node 的 daemonset 运行在每个节点，用于安装 istio CNI 插件</li>
+<li>该 CNI 插件负责写入 iptables 规则，让用户 pod 所在 netns 的流量都转发到这个 pod 中 proxy 的进程</li>
+<li>当启用 istio cni 后，sidecar 的自动注入或<code>istioctl kube-inject</code>将不再注入 initContainers (istio-init)</li>
+</ul>
+<h2 id="istio-cni-node-工作流程"><a href="#istio-cni-node-工作流程" class="headerlink" title="istio-cni-node 工作流程"></a>istio-cni-node 工作流程</h2><ul>
+<li>复制 Istio CNI 插件二进制程序到CNI的bin目录（即kubelet启动参数<code>--cni-bin-dir</code>指定的路径，默认是<code>/opt/cni/bin</code>）</li>
+<li>使用istio-cni-node自己的ServiceAccount信息为CNI插件生成kubeconfig，让插件能与apiserver通信(ServiceAccount信息会被自动挂载到<code>/var/run/secrets/kubernetes.io/serviceaccount</code>)</li>
+<li>生成CNI插件的配置并将其插入CNI配置插件链末尾（CNI的配置文件路径是kubelet启动参数<code>--cni-conf-dir</code>所指定的目录，默认是<code>/etc/cni/net.d</code>）</li>
+<li>watch CNI 配置(<code>cni-conf-dir</code>)，如果检测到被修改就重新改回来</li>
+<li>watch istio-cni-node 自身的配置(configmap)，检测到有修改就重新执行CNI配置生成与下发流程（当前写这篇文章的时候是istio 1.1.1，还没实现此功能）</li>
+</ul>
+<h2 id="设计提案"><a href="#设计提案" class="headerlink" title="设计提案"></a>设计提案</h2><ul>
+<li>Istio CNI Plugin 提案创建时间：2018-09-28</li>
+<li>Istio CNI Plugin 提案文档存放在：Istio 的 Google Team Drive<ul>
+<li>Istio TeamDrive 地址：<a href="https://drive.google.com/corp/drive/u/0/folders/0AIS5p3eW9BCtUk9PVA" target="_blank" rel="noopener">https://drive.google.com/corp/drive/u/0/folders/0AIS5p3eW9BCtUk9PVA</a></li>
+<li>Istio CNI Plugin 提案文档路径：<code>Working Groups/Networking/Istio CNI Plugin</code></li>
+<li>查看文件需要申请权限，申请方法：加入istio-team-drive-access这个google网上论坛group</li>
+<li>istio-team-drive-access group 地址: <a href="https://groups.google.com/forum/#!forum/istio-team-drive-access" target="_blank" rel="noopener">https://groups.google.com/forum/#!forum/istio-team-drive-access</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li>Install Istio with the Istio CNI plugin: <a href="https://istio.io/docs/setup/kubernetes/additional-setup/cni/" target="_blank" rel="noopener">https://istio.io/docs/setup/kubernetes/additional-setup/cni/</a></li>
+<li>istio-cni 项目地址：<a href="https://github.com/istio/cni" target="_blank" rel="noopener">https://github.com/istio/cni</a></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="cjz868qrx0009akqgsruqn7z4" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-istio-analysis-3" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/04/01/istio-analysis-3/" class="article-date">
@@ -226,7 +295,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjx4njoeu0008jnnlsb7akdjp" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="cjz868qru0008akqgoe5ycc8b" class="article-share-link">Share</a>
       
       
     </footer>
@@ -355,7 +424,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjx4njoet0007jnnlic1ozlqe" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="cjz868qrr0007akqgqqwzfsax" class="article-share-link">Share</a>
       
       
     </footer>
@@ -585,7 +654,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjx4njoer0006jnnl7i7x2k2y" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="cjz868qrp0006akqgx3w2eqez" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1284,7 +1353,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjx4njofd000jjnnlmicnptbm" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="cjz868qsf000jakqgaig88p90" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1371,7 +1440,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjx4njof1000bjnnlxxky2v3w" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="cjz868qs2000bakqg7lshvqqg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1466,7 +1535,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjx4njoem0003jnnle1oxjnwc" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="cjz868qrl0003akqgyj3p7q6c" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1582,7 +1651,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjx4njof2000cjnnlpmdmfkng" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/19/kernel-parameters-and-container/" data-id="cjz868qs4000cakqg1s5aqdn6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1823,7 +1892,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjx4njoei0001jnnlzrg2s5y9" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/11/06/NodePort-SVC-LB直通容器性能测试对比/" data-id="cjz868qrh0001akqga14wo4g2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1943,99 +2012,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjx4njoey000ajnnlakzwj68v" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-DNS-5-seconds-delay" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2018/10/26/DNS-5-seconds-delay/" class="article-date">
-  <time datetime="2018-10-26T07:52:37.000Z" itemprop="datePublished">2018-10-26</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2018/10/26/DNS-5-seconds-delay/">kubernetes集群中夺命的5秒DNS延迟</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者： 洪志国</p>
-<h2 id="超时问题"><a href="#超时问题" class="headerlink" title="超时问题"></a>超时问题</h2><p>客户反馈从pod中访问服务时，总是有些请求的响应时延会达到5秒。正常的响应只需要毫秒级别的时延。</p>
-<h2 id="DNS-5秒延时"><a href="#DNS-5秒延时" class="headerlink" title="DNS 5秒延时"></a>DNS 5秒延时</h2><p>在pod中(通过nsenter -n tcpdump)抓包，发现是有的DNS请求没有收到响应，超时5秒后，再次发送DNS请求才成功收到响应。</p>
-<p>在kube-dns pod抓包，发现是有DNS请求没有到达kube-dns pod， 在中途被丢弃了。</p>
-<p>为什么是5秒？ <code>man resolv.conf</code>可以看到glibc的resolver的缺省超时时间是5s。</p>
-<h2 id="丢包原因"><a href="#丢包原因" class="headerlink" title="丢包原因"></a>丢包原因</h2><p>经过搜索发现这是一个普遍问题。<br>根本原因是内核conntrack模块的bug。</p>
-<p>Weave works的工程师<a href="martynas@weave.works">Martynas Pumputis</a>对这个问题做了很详细的分析：<br><a href="https://www.weave.works/blog/racy-conntrack-and-dns-lookup-timeouts" target="_blank" rel="noopener">https://www.weave.works/blog/racy-conntrack-and-dns-lookup-timeouts</a></p>
-<p>相关结论：</p>
-<ul>
-<li>只有多个线程或进程，并发从同一个socket发送相同五元组的UDP报文时，才有一定概率会发生</li>
-<li>glibc, musl(alpine linux的libc库)都使用”parallel query”, 就是并发发出多个查询请求，因此很容易碰到这样的冲突，造成查询请求被丢弃</li>
-<li>由于ipvs也使用了conntrack, 使用kube-proxy的ipvs模式，并不能避免这个问题</li>
-</ul>
-<h2 id="问题的根本解决"><a href="#问题的根本解决" class="headerlink" title="问题的根本解决"></a>问题的根本解决</h2><p>Martynas向内核提交了两个patch来fix这个问题，不过他说如果集群中有多个DNS server的情况下，问题并没有完全解决。</p>
-<p>其中一个patch已经在2018-7-18被合并到linux内核主线中: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=ed07d9a021df6da53456663a76999189badc432a" target="_blank" rel="noopener">netfilter: nf_conntrack: resolve clash for matching conntracks</a></p>
-<p>目前只有4.19.rc 版本包含这个patch。</p>
-<h2 id="规避办法"><a href="#规避办法" class="headerlink" title="规避办法"></a>规避办法</h2><h4 id="规避方案一：使用TCP发送DNS请求"><a href="#规避方案一：使用TCP发送DNS请求" class="headerlink" title="规避方案一：使用TCP发送DNS请求"></a>规避方案一：使用TCP发送DNS请求</h4><p>由于TCP没有这个问题，有人提出可以在容器的resolv.conf中增加<code>options use-vc</code>, 强制glibc使用TCP协议发送DNS query。下面是这个man resolv.conf中关于这个选项的说明：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">use-vc (since glibc 2.14)</span><br><span class="line">                     Sets RES_USEVC in _res.options.  This option forces the</span><br><span class="line">                     use of TCP for DNS resolutions.</span><br></pre></td></tr></table></figure>
-<p>笔者使用镜像”busybox:1.29.3-glibc” (libc 2.24)  做了试验，并没有见到这样的效果，容器仍然是通过UDP发送DNS请求。</p>
-<h4 id="规避方案二：避免相同五元组DNS请求的并发"><a href="#规避方案二：避免相同五元组DNS请求的并发" class="headerlink" title="规避方案二：避免相同五元组DNS请求的并发"></a>规避方案二：避免相同五元组DNS请求的并发</h4><p>resolv.conf还有另外两个相关的参数： </p>
-<ul>
-<li>single-request-reopen (since glibc 2.9)</li>
-<li>single-request (since glibc 2.10)</li>
-</ul>
-<p>man resolv.conf中解释如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">single-request-reopen (since glibc 2.9)</span><br><span class="line">                     Sets RES_SNGLKUPREOP in _res.options.  The resolver</span><br><span class="line">                     uses the same socket for the A and AAAA requests.  Some</span><br><span class="line">                     hardware mistakenly sends back only one reply.  When</span><br><span class="line">                     that happens the client system will sit and wait for</span><br><span class="line">                     the second reply.  Turning this option on changes this</span><br><span class="line">                     behavior so that if two requests from the same port are</span><br><span class="line">                     not handled correctly it will close the socket and open</span><br><span class="line">                     a new one before sending the second request.</span><br><span class="line">                     </span><br><span class="line">single-request (since glibc 2.10)</span><br><span class="line">                     Sets RES_SNGLKUP in _res.options.  By default, glibc</span><br><span class="line">                     performs IPv4 and IPv6 lookups in parallel since</span><br><span class="line">                     version 2.9.  Some appliance DNS servers cannot handle</span><br><span class="line">                     these queries properly and make the requests time out.</span><br><span class="line">                     This option disables the behavior and makes glibc</span><br><span class="line">                     perform the IPv6 and IPv4 requests sequentially (at the</span><br><span class="line">                     cost of some slowdown of the resolving process).</span><br></pre></td></tr></table></figure>
-<p>笔者做了试验，发现效果是这样的：</p>
-<ul>
-<li>single-request-reopen<br>发送A类型请求和AAAA类型请求使用不同的源端口。这样两个请求在conntrack表中不占用同一个表项，从而避免冲突。</li>
-<li>single-request<br>避免并发，改为串行发送A类型和AAAA类型请求。没有了并发，从而也避免了冲突。</li>
-</ul>
-<p>要给容器的resolv.conf加上options参数，有几个办法：</p>
-<h5 id="1-在容器的”ENTRYPOINT”或者”CMD”脚本中，执行-bin-echo-39-options-single-request-reopen-39-gt-gt-etc-resolv-conf"><a href="#1-在容器的”ENTRYPOINT”或者”CMD”脚本中，执行-bin-echo-39-options-single-request-reopen-39-gt-gt-etc-resolv-conf" class="headerlink" title="1) 在容器的”ENTRYPOINT”或者”CMD”脚本中，执行/bin/echo &#39;options single-request-reopen&#39; &gt;&gt; /etc/resolv.conf"></a>1) 在容器的”ENTRYPOINT”或者”CMD”脚本中，执行<code>/bin/echo &#39;options single-request-reopen&#39; &gt;&gt; /etc/resolv.conf</code></h5><h5 id="2-在pod的postStart-hook中："><a href="#2-在pod的postStart-hook中：" class="headerlink" title="2) 在pod的postStart hook中："></a>2) 在pod的postStart hook中：</h5><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">lifecycle:</span><br><span class="line">  postStart:</span><br><span class="line">    exec:</span><br><span class="line">      command:</span><br><span class="line">      - /bin/sh</span><br><span class="line">      - -c </span><br><span class="line">      - &quot;/bin/echo &apos;options single-request-reopen&apos; &gt;&gt; /etc/resolv.conf&quot;</span><br></pre></td></tr></table></figure>
-<h5 id="3-使用template-spec-dnsConfig-k8s-v1-9-及以上才支持"><a href="#3-使用template-spec-dnsConfig-k8s-v1-9-及以上才支持" class="headerlink" title="3) 使用template.spec.dnsConfig (k8s v1.9 及以上才支持):"></a>3) 使用template.spec.dnsConfig (k8s v1.9 及以上才支持):</h5><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">template:</span><br><span class="line">  spec:</span><br><span class="line">    dnsConfig:</span><br><span class="line">      options:</span><br><span class="line">        - name: single-request-reopen</span><br></pre></td></tr></table></figure>
-<h5 id="4-使用ConfigMap覆盖POD里面的-etc-resolv-conf"><a href="#4-使用ConfigMap覆盖POD里面的-etc-resolv-conf" class="headerlink" title="4) 使用ConfigMap覆盖POD里面的/etc/resolv.conf"></a>4) 使用ConfigMap覆盖POD里面的/etc/resolv.conf</h5><p>configmap:<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">apiVersion: v1</span><br><span class="line">data:</span><br><span class="line">  resolv.conf: |</span><br><span class="line">    nameserver 1.2.3.4</span><br><span class="line">    search default.svc.cluster.local svc.cluster.local cluster.local ec2.internal</span><br><span class="line">    options ndots:5 single-request-reopen timeout:1</span><br><span class="line">kind: ConfigMap</span><br><span class="line">metadata:</span><br><span class="line">  name: resolvconf</span><br></pre></td></tr></table></figure></p>
-<p>POD spec:<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">        volumeMounts:</span><br><span class="line">        - name: resolv-conf</span><br><span class="line">          mountPath: /etc/resolv.conf</span><br><span class="line">          subPath: resolv.conf</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line">      volumes:</span><br><span class="line">      - name: resolv-conf</span><br><span class="line">        configMap:</span><br><span class="line">          name: resolvconf</span><br><span class="line">          items:</span><br><span class="line">          - key: resolv.conf</span><br><span class="line">            path: resolv.conf</span><br></pre></td></tr></table></figure></p>
-<h5 id="5-使用MutatingAdmissionWebhook"><a href="#5-使用MutatingAdmissionWebhook" class="headerlink" title="5) 使用MutatingAdmissionWebhook"></a>5) 使用MutatingAdmissionWebhook</h5><p><a href="https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#mutatingadmissionwebhook-beta-in-1-9" target="_blank" rel="noopener">MutatingAdmissionWebhook</a> 是1.9引入的Controller，用于对一个指定的Resource的操作之前，对这个resource进行变更。<br>istio的自动sidecar注入就是用这个功能来实现的。 我们也可以通过MutatingAdmissionWebhook，来自动给所有POD，注入以上3)或者4)所需要的相关内容。</p>
-<hr>
-<p>以上方法中， 1)和2)都需要修改镜像， 3)和4)则只需要修改POD的spec， 能适用于所有镜像。不过还是有不方便的地方：</p>
-<ul>
-<li>每个工作负载的yaml都要做修改，比较麻烦</li>
-<li>对于通过helm创建的工作负载，需要修改helm charts</li>
-</ul>
-<p>方法5)对集群使用者最省事，照常提交工作负载即可。不过初期需要一定的开发工作量。</p>
-<h4 id="规避方案三：使用本地DNS缓存"><a href="#规避方案三：使用本地DNS缓存" class="headerlink" title="规避方案三：使用本地DNS缓存"></a>规避方案三：使用本地DNS缓存</h4><p>容器的DNS请求都发往本地的DNS缓存服务(dnsmasq, nscd等)，不需要走DNAT，也不会发生conntrack冲突。另外还有个好处，就是避免DNS服务成为性能瓶颈。</p>
-<p>使用本地DNS缓存有两种方式：</p>
-<ul>
-<li>每个容器自带一个DNS缓存服务</li>
-<li>每个节点运行一个DNS缓存服务，所有容器都把本节点的DNS缓存作为自己的nameserver</li>
-</ul>
-<p>从资源效率的角度来考虑的话，推荐后一种方式。</p>
-<h5 id="实施办法"><a href="#实施办法" class="headerlink" title="实施办法"></a>实施办法</h5><p>条条大路通罗马，不管怎么做，最终到达上面描述的效果即可。</p>
-<p>POD中要访问节点上的DNS缓存服务，可以使用节点的IP。 如果节点上的容器都连在一个虚拟bridge上， 也可以使用这个bridge的三层接口的IP(在TKE中，这个三层接口叫cbr0)。 要确保DNS缓存服务监听这个地址。</p>
-<p>如何把POD的/etc/resolv.conf中的nameserver设置为节点IP呢？</p>
-<p>一个办法，是设置POD.spec.dnsPolicy为”Default”， 意思是POD里面的/etc/resolv.conf， 使用节点上的文件。缺省使用节点上的/etc/resolv.conf(如果kubelet通过参数–resolv-conf指定了其他文件，则使用–resolv-conf所指定的文件)。</p>
-<p>另一个办法，是给每个节点的kubelet指定不同的–cluster-dns参数，设置为节点的IP，POD.spec.dnsPolicy仍然使用缺省值”ClusterFirst”。 kops项目甚至有个issue在讨论如何在部署集群时设置好–cluster-dns指向节点IP: <a href="https://github.com/kubernetes/kops/issues/5584" target="_blank" rel="noopener">https://github.com/kubernetes/kops/issues/5584</a></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/26/DNS-5-seconds-delay/" data-id="cjx4njoea0000jnnlmoivb40x" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2018/10/30/k8s-npc-kr-function/" data-id="cjz868qrz000aakqg971g54iq" class="article-share-link">Share</a>
       
       
     </footer>
@@ -2068,7 +2045,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -2079,6 +2056,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
+          </li>
         
           <li>
             <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
@@ -2094,10 +2075,6 @@
         
           <li>
             <a href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
-          </li>
-        
-          <li>
-            <a href="/2019/06/06/scale-keepalive-service/">Kubernetes 最佳实践：解决长连接服务扩容失效</a>
           </li>
         
       </ul>

@@ -22,7 +22,7 @@
 <meta property="og:image" content="https://imroc.io/assets/blog/du-sh-containers.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/du-sh-diff.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/docker-images.png">
-<meta property="og:updated_time" content="2019-06-20T12:38:47.440Z">
+<meta property="og:updated_time" content="2019-08-12T09:04:48.448Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes 最佳实践：处理容器数据磁盘被写满">
 <meta name="twitter:description" content="作者: 陈鹏 容器数据磁盘被写满造成的危害:  不能创建 Pod (一直 ContainerCreating) 不能删除 Pod (一直 Terminating) 无法 exec 到容器  判断是否被写满: 容器数据目录大多会单独挂数据盘，路径一般是 /var/lib/docker，也可能是 /data/docker 或 /opt/docker，取决于节点被添加时的配置：  可通过 docker">
@@ -173,7 +173,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjx4njof6000ejnnlztaza7zm" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjz868qs8000eakqgh3ysdrd4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -218,7 +218,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -229,6 +229,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
+          </li>
         
           <li>
             <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
@@ -244,10 +248,6 @@
         
           <li>
             <a href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
-          </li>
-        
-          <li>
-            <a href="/2019/06/06/scale-keepalive-service/">Kubernetes 最佳实践：解决长连接服务扩容失效</a>
           </li>
         
       </ul>
