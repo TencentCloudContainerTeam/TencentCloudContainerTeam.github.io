@@ -14,8 +14,6 @@ date: 2019/08/12 17:03:00
 
 现象: 从 VPC a 访问 VPC b 的 TKE 集群的某个节点的 NodePort，有时候正常，有时候会卡住直到超时。
 
-<!-- ![](https://imroc.io/assets/blog/troubleshooting-k8s-network/cross_vpc_timeout.png) -->
-
 原因怎么查？
 
 ![](https://imroc.io/assets/meme/emoji_analysis.png)
@@ -76,7 +74,6 @@ client 抓包: 大量SYN重传。
 
 server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 能收到 SYN 包但没有响应。
 
-<!-- `netstat -s | grep LISTEN`  查得大量 SYN 被丢弃。 -->
 ![](https://imroc.io/assets/meme/emoji_analysis.png)
 
 又是 SYN 收到但没响应，难道又是开启 `tcp_tw_recycle` 导致的？检查节点的内核参数发现并没有开启，除了这个原因，还会有什么情况能导致被丢弃？
@@ -241,7 +238,7 @@ Unix 系的 OS 下，除了 openbsd， go runtime 会读取 `/etc/nsswitch.conf`
 
 第一反应当然是看 coredns 的 log:
 ``` bash
-[ERROR] 2 loginspub.gaeamobile-inc.net. 
+[ERROR] 2 loginspub.xxxxmobile-inc.net. 
 A: unreachable backend: read udp 172.16.0.230:43742->10.225.30.181:53: i/o timeout
 ```
 
@@ -283,7 +280,7 @@ A: unreachable backend: read udp 172.16.0.230:43742->10.225.30.181:53: i/o timeo
 
 用脚本跑测试仔细分析现象:
 
-- 请求 `loginspub.gaeamobile-inc.net` 时，偶尔提示域名无法解析
+- 请求 `loginspub.xxxxmobile-inc.net` 时，偶尔提示域名无法解析
 - 请求 `accounts.google.com` 时，偶尔提示连接失败
 
 进入 dns 解析偶尔异常的容器的 netns 抓包:
@@ -295,7 +292,7 @@ A: unreachable backend: read udp 172.16.0.230:43742->10.225.30.181:53: i/o timeo
 
 正常情况下id不会冲突，这里冲突了也就能解释这个 dns 解析异常的现象了:
 
-- `loginspub.gaeamobile-inc.net` 没有 AAAA (ipv6) 记录，它的响应先返回告知 client 不存在此记录，由于请求 id 跟 A 记录请求冲突，后面 A 记录响应返回了 client 发现 id 重复就忽略了，然后认为这个域名无法解析
+- `loginspub.xxxxmobile-inc.net` 没有 AAAA (ipv6) 记录，它的响应先返回告知 client 不存在此记录，由于请求 id 跟 A 记录请求冲突，后面 A 记录响应返回了 client 发现 id 重复就忽略了，然后认为这个域名无法解析
 - `accounts.google.com` 有 AAAA 记录，响应先返回了，client 就拿这个记录去尝试请求，但当前容器环境不支持 ipv6，所以会连接失败
 
 那为什么 dns 请求 id 会冲突?
