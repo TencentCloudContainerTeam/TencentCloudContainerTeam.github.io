@@ -91,7 +91,6 @@
 </blockquote>
 <p><img src="https://imroc.io/assets/meme/dengguangshi.png" alt=""></p>
 <h2 id="跨-VPC-访问-NodePort-经常超时"><a href="#跨-VPC-访问-NodePort-经常超时" class="headerlink" title="跨 VPC 访问 NodePort 经常超时"></a>跨 VPC 访问 NodePort 经常超时</h2><p>现象: 从 VPC a 访问 VPC b 的 TKE 集群的某个节点的 NodePort，有时候正常，有时候会卡住直到超时。</p>
-<!-- ![](https://imroc.io/assets/blog/troubleshooting-k8s-network/cross_vpc_timeout.png) -->
 <p>原因怎么查？</p>
 <p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
 <p>当然是先抓包看看啦，抓 server 端 NodePort 的包，发现异常时 server 能收到 SYN，但没响应 ACK:</p>
@@ -125,7 +124,6 @@
 <p>环境说明: 用户使用的黑石TKE，不是公有云TKE，黑石的机器是物理机，LB的实现也跟公有云不一样，但 LoadBalancer 类型的 Service 的实现同样也是 LB 绑定各节点的 NodePort，报文发到 LB 后转到节点的 NodePort， 然后再路由到对应 pod，而测试在公有云 TKE 环境下没有这个问题。</p>
 <p>client 抓包: 大量SYN重传。</p>
 <p>server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 能收到 SYN 包但没有响应。</p>
-<!-- `netstat -s | grep LISTEN`  查得大量 SYN 被丢弃。 -->
 <p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
 <p>又是 SYN 收到但没响应，难道又是开启 <code>tcp_tw_recycle</code> 导致的？检查节点的内核参数发现并没有开启，除了这个原因，还会有什么情况能导致被丢弃？</p>
 <p><code>conntrack -S</code> 看到 <code>insert_failed</code> 数量在不断增加，也就是 conntrack 在插入很多新连接的时候失败了，为什么会插入失败？什么情况下会插入失败？</p>
@@ -201,7 +199,7 @@
 </ol>
 <h2 id="DNS-解析异常"><a href="#DNS-解析异常" class="headerlink" title="DNS 解析异常"></a>DNS 解析异常</h2><p>现象: 有个用户反馈域名解析有时有问题，看报错是解析超时。</p>
 <p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>第一反应当然是看 coredns 的 log:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[ERROR] 2 loginspub.gaeamobile-inc.net. </span><br><span class="line">A: unreachable backend: <span class="built_in">read</span> udp 172.16.0.230:43742-&gt;10.225.30.181:53: i/o timeout</span><br></pre></td></tr></table></figure></p>
+<p>第一反应当然是看 coredns 的 log:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[ERROR] 2 loginspub.xxxxmobile-inc.net. </span><br><span class="line">A: unreachable backend: <span class="built_in">read</span> udp 172.16.0.230:43742-&gt;10.225.30.181:53: i/o timeout</span><br></pre></td></tr></table></figure></p>
 <p>这是上游 DNS 解析异常了，因为解析外部域名 coredns 默认会请求上游 DNS 来查询，这里的上游 DNS 默认是 coredns pod 所在宿主机的 <code>resolv.conf</code> 里面的 nameserver (coredns pod 的 dnsPolicy 为 “Default”，也就是会将宿主机里的 <code>resolv.conf</code> 里的 nameserver 加到容器里的 <code>resolv.conf</code>, coredns 默认配置 <code>proxy . /etc/resolv.conf</code>, 意思是非 service 域名会使用 coredns 容器中 <code>resolv.conf</code> 文件里的 nameserver 来解析)</p>
 <p>确认了下，超时的上游 DNS 10.225.30.181 并不是期望的 nameserver，VPC 默认 DNS 应该是 180 开头的。看了 coredns 所在节点的 <code>resolv.conf</code>，发现确实多出了这个非期望的 nameserver，跟用户确认了下，这个 DNS 不是用户自己加上去的，添加节点时这个 nameserver 本身就在 <code>resolv.conf</code> 中。</p>
 <p>根据内部同学反馈， 10.225.30.181 是广州一台年久失修将被撤裁的 DNS，物理网络，没有 VIP，撤掉就没有了，所以如果 coredns 用到了这台 DNS 解析时就可能 timeout。后面我们自己测试，某些 VPC 的集群确实会有这个 nameserver，奇了怪了，哪里冒出来的？</p>
@@ -225,7 +223,7 @@
 <p><img src="https://imroc.io/assets/meme/chijing1.png" alt=""></p>
 <p>用脚本跑测试仔细分析现象:</p>
 <ul>
-<li>请求 <code>loginspub.gaeamobile-inc.net</code> 时，偶尔提示域名无法解析</li>
+<li>请求 <code>loginspub.xxxxmobile-inc.net</code> 时，偶尔提示域名无法解析</li>
 <li>请求 <code>accounts.google.com</code> 时，偶尔提示连接失败</li>
 </ul>
 <p>进入 dns 解析偶尔异常的容器的 netns 抓包:</p>
@@ -236,7 +234,7 @@
 <p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/dns-id-conflict.png" alt=""></p>
 <p>正常情况下id不会冲突，这里冲突了也就能解释这个 dns 解析异常的现象了:</p>
 <ul>
-<li><code>loginspub.gaeamobile-inc.net</code> 没有 AAAA (ipv6) 记录，它的响应先返回告知 client 不存在此记录，由于请求 id 跟 A 记录请求冲突，后面 A 记录响应返回了 client 发现 id 重复就忽略了，然后认为这个域名无法解析</li>
+<li><code>loginspub.xxxxmobile-inc.net</code> 没有 AAAA (ipv6) 记录，它的响应先返回告知 client 不存在此记录，由于请求 id 跟 A 记录请求冲突，后面 A 记录响应返回了 client 发现 id 重复就忽略了，然后认为这个域名无法解析</li>
 <li><code>accounts.google.com</code> 有 AAAA 记录，响应先返回了，client 就拿这个记录去尝试请求，但当前容器环境不支持 ipv6，所以会连接失败</li>
 </ul>
 <p>那为什么 dns 请求 id 会冲突?</p>
@@ -325,7 +323,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="cjz8bq9yj000kfixtkgntl9p4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="cjzduil2c000kexqomnazb9ao" class="article-share-link">Share</a>
       
       
     </footer>
@@ -376,7 +374,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="cjz8bq9yg000hfixt7jt0swqy" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="cjzduil29000hexqocnllahle" class="article-share-link">Share</a>
       
       
     </footer>
@@ -428,7 +426,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjz8bq9ye000gfixt3cwwocdj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="cjzduil28000gexqonmhtxz12" class="article-share-link">Share</a>
       
       
     </footer>
@@ -538,7 +536,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjz8bq9yb000efixtvcve85o0" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="cjzduil24000eexqoodzjeu33" class="article-share-link">Share</a>
       
       
     </footer>
@@ -597,7 +595,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjz8bq9xu0005fixtcqww1ggq" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="cjzduil1l0005exqovul31c0n" class="article-share-link">Share</a>
       
       
     </footer>
@@ -637,7 +635,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjz8bq9yh000ifixt0mfnb9ex" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="cjzduil2a000iexqo4ylyi5t8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -705,7 +703,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjz8bq9xo0002fixtj0c0r91i" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="cjzduil1f0002exqovkxyo8aj" class="article-share-link">Share</a>
       
       
     </footer>
@@ -763,7 +761,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjz8bq9y9000dfixtp56a1csg" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="cjzduil22000dexqoukxqttxr" class="article-share-link">Share</a>
       
       
     </footer>
@@ -836,7 +834,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjz8bq9yc000ffixtxyigbpxl" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="cjzduil26000fexqoczg8q1xp" class="article-share-link">Share</a>
       
       
     </footer>
@@ -906,7 +904,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjz8bq9xs0004fixtcnefbdi6" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="cjzduil1i0004exqoicr71ot8" class="article-share-link">Share</a>
       
       
     </footer>
