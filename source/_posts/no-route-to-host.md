@@ -16,29 +16,29 @@ date: 2019/12/15 12:03:00
 * `Connection reset by peer`: 连接被重置。通常是连接建立过，但 server 端发现 client 发的包不对劲就返回 RST，应用层就报错连接被重置。比如在 server 滚动更新过程中，client 给 server 发的请求还没完全结束，或者本身是一个类似 grpc 的多路复用长连接，当 server 对应的旧 Pod 删除(没有做优雅结束，停止时没有关闭连接)，新 Pod 很快创建启动并且刚好有跟之前旧 Pod 一样的 IP，这时 kube-proxy 也没感知到这个 IP 其实已经被删除然后又被重建了，针对这个 IP 的规则就不会更新，旧的连接依然发往这个 IP，但旧 Pod 已经不在了，后面继续发包时依然转发给这个 Pod IP，最终会被转发到这个有相同 IP 的新 Pod 上，而新 Pod 收到此包时检查报文发现不对劲，就返回 RST 给 client 告知将连接重置。针对这种情况，建议应用自身处理好优雅结束：Pod 进入 Terminating 状态后会发送 `SIGTERM` 信号给业务进程，业务进程的代码需处理这个信号，在进程退出前关闭所有连接。
 * `Connection refused`: 连接被拒绝。通常是连接还没建立，client 正在发 SYN 包请求建立连接，但到了 server 之后发现端口没监听，内核就返回 RST 包，然后应用层就报错连接被拒绝。比如在 server 滚动更新过程中，旧的 Pod 中的进程很快就停止了(网卡还未完全销毁)，但 client 所在节点的 iptables/ipvs 规则还没更新，包就可能会被转发到了这个停止的 Pod (由于 k8s 的 controller 模式，从 Pod 删除到 service 的 endpoint 更新，再到 kube-proxy watch 到更新并更新 节点上的 iptables/ipvs 规则，这个过程是异步的，中间存在一点时间差，所以有可能存在 Pod 中的进程已经监听，但 iptables/ipvs 规则还没更新的情况)。针对这种情况，建议给容器加一个 preStop，在真正销毁 Pod 之前等待一段时间，留时间给 kube-proxy 更新转发规则，更新完之后就不会再有新连接往这个旧 Pod 转发了，preStop 示例:
 
-  ``` yaml
-  lifecycle:
-    preStop:
-      exec:
-        command:
-        - /bin/bash
-        - -c
-        - sleep 30
-  ```
+```
+lifecycle:
+  preStop:
+    exec:
+      command:
+      - /bin/bash
+      - -c
+      - sleep 30
+```
 
   另外，还可能是新的 Pod 启动比较慢，虽然状态已经 Ready，但实际上可能端口还没监听，新的请求被转发到这个还没完全启动的 Pod 就会报错连接被拒绝。针对这种情况，建议给容器加就绪检查 (readinessProbe)，让容器真正启动完之后才将其状态置为 Ready，然后 kube-proxy 才会更新转发规则，这样就能保证新的请求只被转发到完全启动的 Pod，readinessProbe 示例:
 
-  ``` yaml
-  readinessProbe:
-    httpGet:
-      path: /healthz
-      port: 80
-      httpHeaders:
-      - name: X-Custom-Header
-        value: Awesome
-    initialDelaySeconds: 15
-    timeoutSeconds: 1
-  ```
+```
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 80
+    httpHeaders:
+    - name: X-Custom-Header
+      value: Awesome
+  initialDelaySeconds: 15
+  timeoutSeconds: 1
+```
 
 * `Connection timed out`: 连接超时。通常是连接还没建立，client 发 SYN 请求建立连接一直等到超时时间都没有收到 ACK，然后就报错连接超时。这个可能场景跟前面 `Connection refused` 可能的场景类似，不同点在于端口有监听，但进程无法正常响应了: 转发规则还没更新，旧 Pod 的进程正在停止过程中，虽然端口有监听，但已经不响应了；或者转发规则更新了，新 Pod 端口也监听了，但还没有真正就绪，还没有能力处理新请求。针对这些情况的建议跟前面一样：加 preStop 和 readinessProbe。
 
@@ -64,7 +64,7 @@ date: 2019/12/15 12:03:00
 
 在 ServiceB 滚动更新期间，新的 Pod Ready 了之后会被添加到 IPVS 规则的 RS 列表，但旧的 Pod 不会立即被踢掉，而是将新的 Pod 权重置为1，旧的置为 0，通过在 client 所在节点查看 IPVS 规则可以看出来:
 
-``` bash
+```
 root@VM-0-3-ubuntu:~# ipvsadm -ln -t 172.16.255.241:80
 Prot LocalAddress:Port Scheduler Flags
   -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
@@ -79,7 +79,7 @@ TCP  172.16.255.241:80 rr
 
 经过上面的分析，看起来都是符合预期的，那为什么还会出现 "No route to host" 呢？难道权重被置为 0 之后还有新连接往这个旧 Pod 转发？我们来抓包看下：
 
-``` bash
+```
 root@VM-0-3-ubuntu:~# tcpdump -i eth0 host 172.16.8.106 -n -tttt
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
 listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
