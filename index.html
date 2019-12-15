@@ -63,6 +63,83 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-no-route-to-host" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/12/15/no-route-to-host/" class="article-date">
+  <time datetime="2019-12-15T04:03:00.000Z" itemprop="datePublished">2019-12-15</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/12/15/no-route-to-host/">Kubernetes 疑难杂症排查分享: 诡异的 No route to host</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>大家好，我是 roc，来自腾讯云容器服务(TKE)团队，之前发过一篇干货满满的爆火文章 <a href="https://tencentcloudcontainerteam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>，包含多个疑难杂症的排查案例分享，信息量巨大。这次我又带来了续集，只讲一个案例，但信息量也不小，Are you ready ?</p>
+<h2 id="问题反馈"><a href="#问题反馈" class="headerlink" title="问题反馈"></a>问题反馈</h2><p>有用户反馈 Deployment 滚动更新的时候，业务日志偶尔会报 “No route to host” 的错误。</p>
+<h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><p>之前没遇到滚动更新会报 “No route to host” 的问题，我们先看下滚动更新导致连接异常有哪些常见的报错:</p>
+<ul>
+<li><code>Connection reset by peer</code>: 连接被重置。通常是连接建立过，但 server 端发现 client 发的包不对劲就返回 RST，应用层就报错连接被重置。比如在 server 滚动更新过程中，client 给 server 发的请求还没完全结束，或者本身是一个类似 grpc 的多路复用长连接，当 server 对应的旧 Pod 删除(没有做优雅结束，停止时没有关闭连接)，新 Pod 很快创建启动并且刚好有跟之前旧 Pod 一样的 IP，这时 kube-proxy 也没感知到这个 IP 其实已经被删除然后又被重建了，针对这个 IP 的规则就不会更新，旧的连接依然发往这个 IP，但旧 Pod 已经不在了，后面继续发包时依然转发给这个 Pod IP，最终会被转发到这个有相同 IP 的新 Pod 上，而新 Pod 收到此包时检查报文发现不对劲，就返回 RST 给 client 告知将连接重置。针对这种情况，建议应用自身处理好优雅结束：Pod 进入 Terminating 状态后会发送 <code>SIGTERM</code> 信号给业务进程，业务进程的代码需处理这个信号，在进程退出前关闭所有连接。</li>
+<li><p><code>Connection refused</code>: 连接被拒绝。通常是连接还没建立，client 正在发 SYN 包请求建立连接，但到了 server 之后发现端口没监听，内核就返回 RST 包，然后应用层就报错连接被拒绝。比如在 server 滚动更新过程中，旧的 Pod 中的进程很快就停止了(网卡还未完全销毁)，但 client 所在节点的 iptables/ipvs 规则还没更新，包就可能会被转发到了这个停止的 Pod (由于 k8s 的 controller 模式，从 Pod 删除到 service 的 endpoint 更新，再到 kube-proxy watch 到更新并更新 节点上的 iptables/ipvs 规则，这个过程是异步的，中间存在一点时间差，所以有可能存在 Pod 中的进程已经监听，但 iptables/ipvs 规则还没更新的情况)。针对这种情况，建议给容器加一个 preStop，在真正销毁 Pod 之前等待一段时间，留时间给 kube-proxy 更新转发规则，更新完之后就不会再有新连接往这个旧 Pod 转发了，preStop 示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">lifecycle:</span></span><br><span class="line"><span class="attr">  preStop:</span></span><br><span class="line"><span class="attr">    exec:</span></span><br><span class="line"><span class="attr">      command:</span></span><br><span class="line"><span class="bullet">      -</span> <span class="string">/bin/bash</span></span><br><span class="line"><span class="bullet">      -</span> <span class="bullet">-c</span></span><br><span class="line"><span class="bullet">      -</span> <span class="string">sleep</span> <span class="number">30</span></span><br></pre></td></tr></table></figure>
+<p>另外，还可能是新的 Pod 启动比较慢，虽然状态已经 Ready，但实际上可能端口还没监听，新的请求被转发到这个还没完全启动的 Pod 就会报错连接被拒绝。针对这种情况，建议给容器加就绪检查 (readinessProbe)，让容器真正启动完之后才将其状态置为 Ready，然后 kube-proxy 才会更新转发规则，这样就能保证新的请求只被转发到完全启动的 Pod，readinessProbe 示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">readinessProbe:</span></span><br><span class="line"><span class="attr">  httpGet:</span></span><br><span class="line"><span class="attr">    path:</span> <span class="string">/healthz</span></span><br><span class="line"><span class="attr">    port:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">    httpHeaders:</span></span><br><span class="line"><span class="attr">    - name:</span> <span class="string">X-Custom-Header</span></span><br><span class="line"><span class="attr">      value:</span> <span class="string">Awesome</span></span><br><span class="line"><span class="attr">  initialDelaySeconds:</span> <span class="number">15</span></span><br><span class="line"><span class="attr">  timeoutSeconds:</span> <span class="number">1</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p><code>Connection timed out</code>: 连接超时。通常是连接还没建立，client 发 SYN 请求建立连接一直等到超时时间都没有收到 ACK，然后就报错连接超时。这个可能场景跟前面 <code>Connection refused</code> 可能的场景类似，不同点在于端口有监听，但进程无法正常响应了: 转发规则还没更新，旧 Pod 的进程正在停止过程中，虽然端口有监听，但已经不响应了；或者转发规则更新了，新 Pod 端口也监听了，但还没有真正就绪，还没有能力处理新请求。针对这些情况的建议跟前面一样：加 preStop 和 readinessProbe。</p>
+</li>
+</ul>
+<p>下面我们来继续分析下滚动更新时发生 <code>No route to host</code> 的可能情况。</p>
+<p>这个报错很明显，IP 无法路由，通常是将报文发到了一个已经彻底销毁的 Pod (网卡已经不在)。不可能发到一个网卡还没创建好的 Pod，因为即便不加存活检查，也是要等到 Pod 网络初始化完后才可能 Ready，然后 kube-proxy 才会更新转发规则。</p>
+<p>什么情况下会转发到一个已经彻底销毁的 Pod？ 借鉴前面几种滚动更新的报错分析，我们推测应该是 Pod 很快销毁了但转发规则还没更新，从而新的请求被转发了这个已经销毁的 Pod，最终报文到达这个 Pod 所在 PodCIDR 的 Node 上时，Node 发现本机已经没有这个 IP 的容器，然后 Node 就返回 ICMP 包告知 client 这个 IP 不可达，client 收到 ICMP 后，应用层就会报错 “No route to host”。</p>
+<p>所以根据我们的分析，关键点在于 Pod 销毁太快，转发规则还没来得及更新，导致后来的请求被转发到已销毁的 Pod。针对这种情况，我们可以给容器加一个 preStop，留时间给 kube-proxy 更新转发规则来解决，参考 《Kubernetes实践指南》中的部分章节: <a href="https://k8s.imroc.io/best-practice/high-availability-deployment-of-applications#smooth-update-using-prestophook-and-readinessprobe" target="_blank" rel="noopener">https://k8s.imroc.io/best-practice/high-availability-deployment-of-applications#smooth-update-using-prestophook-and-readinessprobe</a></p>
+<h2 id="问题没有解决"><a href="#问题没有解决" class="headerlink" title="问题没有解决"></a>问题没有解决</h2><p>我们自己没有复现用户的 “No route to host” 的问题，可能是复现条件比较苛刻，最后将我们上面理论上的分析结论作为解决方案给到了用户。</p>
+<p>但用户尝试加了 preStop 之后，问题依然存在，服务滚动更新时偶尔还是会出现 “No route to host”。</p>
+<h2 id="深入分析"><a href="#深入分析" class="headerlink" title="深入分析"></a>深入分析</h2><p>为了弄清楚根本原因，我们请求用户协助搭建了一个可以复现问题的测试环境，最终这个问题在测试环境中可以稳定复现。</p>
+<p>仔细观察，实际是部署两个服务：ServiceA 和 ServiceB。使用 ab 压测工具去压测 ServiceA （短连接），然后 ServiceA 会通过 RPC 调用 ServiceB (短连接)，滚动更新的是 ServiceB，报错发生在 ServiceA 调用 ServiceB 这条链路。</p>
+<p>在 ServiceB 滚动更新期间，新的 Pod Ready 了之后会被添加到 IPVS 规则的 RS 列表，但旧的 Pod 不会立即被踢掉，而是将新的 Pod 权重置为1，旧的置为 0，通过在 client 所在节点查看 IPVS 规则可以看出来:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">root@VM-0-3-ubuntu:~<span class="comment"># ipvsadm -ln -t 172.16.255.241:80</span></span><br><span class="line">Prot LocalAddress:Port Scheduler Flags</span><br><span class="line">  -&gt; RemoteAddress:Port           Forward Weight ActiveConn InActConn</span><br><span class="line">TCP  172.16.255.241:80 rr</span><br><span class="line">  -&gt; 172.16.8.106:80              Masq    0      5          14048</span><br><span class="line">  -&gt; 172.16.8.107:80              Masq    1      2          243</span><br></pre></td></tr></table></figure>
+<p>为什么不立即踢掉旧的 Pod 呢？因为要支持优雅结束，让存量的连接处理完，等存量连接全部结束了再踢掉它(ActiveConn+InactiveConn=0)，这个逻辑可以通过这里的代码确认：<a href="https://github.com/kubernetes/kubernetes/blob/v1.17.0/pkg/proxy/ipvs/graceful_termination.go#L170" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/blob/v1.17.0/pkg/proxy/ipvs/graceful_termination.go#L170</a></p>
+<p>然后再通过 <code>ipvsadm -lnc | grep 172.16.8.106</code> 发现旧 Pod 上的连接大多是 <code>TIME_WAIT</code> 状态，这个也容易理解：因为 ServiceA 作为 client 发起短连接请求调用 ServiceB，调用完成就会关闭连接，TCP 三次挥手后进入 <code>TIME_WAIT</code> 状态，等待 2*MSL (2 分钟) 的时长再清理连接。</p>
+<p>经过上面的分析，看起来都是符合预期的，那为什么还会出现 “No route to host” 呢？难道权重被置为 0 之后还有新连接往这个旧 Pod 转发？我们来抓包看下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">root@VM-0-3-ubuntu:~<span class="comment"># tcpdump -i eth0 host 172.16.8.106 -n -tttt</span></span><br><span class="line">tcpdump: verbose output suppressed, use -v or -vv <span class="keyword">for</span> full protocol decode</span><br><span class="line">listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes</span><br><span class="line">2019-12-13 11:49:47.319093 IP 10.0.0.3.36708 &gt; 172.16.8.106.80: Flags [S], seq 3988339656, win 29200, options [mss 1460,sackOK,TS val 3751111666 ecr 0,nop,wscale 9], length 0</span><br><span class="line">2019-12-13 11:49:47.319133 IP 10.0.0.3.36706 &gt; 172.16.8.106.80: Flags [S], seq 109196945, win 29200, options [mss 1460,sackOK,TS val 3751111666 ecr 0,nop,wscale 9], length 0</span><br><span class="line">2019-12-13 11:49:47.319144 IP 10.0.0.3.36704 &gt; 172.16.8.106.80: Flags [S], seq 1838682063, win 29200, options [mss 1460,sackOK,TS val 3751111666 ecr 0,nop,wscale 9], length 0</span><br><span class="line">2019-12-13 11:49:47.319153 IP 10.0.0.3.36702 &gt; 172.16.8.106.80: Flags [S], seq 1591982963, win 29200, options [mss 1460,sackOK,TS val 3751111666 ecr 0,nop,wscale 9], length 0</span><br></pre></td></tr></table></figure>
+<p>果然是！即使权重为 0，仍然会尝试发 SYN 包跟这个旧 Pod 建立连接，但永远无法收到 ACK，因为旧 Pod 已经销毁了。为什么会这样呢？难道是 IPVS 内核模块的调度算法有问题？尝试去看了下 linux 内核源码，并没有发现哪个调度策略的实现函数会将新连接调度到权重为 0 的 rs 上。</p>
+<p>这就奇怪了，可能不是调度算法的问题？继续尝试看更多的代码，主要是 <code>net/netfilter/ipvs/ip_vs_core.c</code> 中的 <code>ip_vs_in</code> 函数，也就是 IPVS 模块处理报文的主要入口，发现它会先在本地连接转发表看这个包是否已经有对应的连接了（匹配五元组），如果有就说明它不是新连接也就不会调度，直接发给这个连接对应的之前已经调度过的 rs (也不会判断权重)；如果没匹配到说明这个包是新的连接，就会走到调度这里 (rr, wrr 等调度策略)，这个逻辑看起来也没问题。</p>
+<p>那为什么会转发到权重为 0 的 rs ？难道是匹配连接这里出问题了？新的连接匹配到了旧的连接？我开始做实验验证这个猜想，修改一下这里的逻辑：检查匹配到的连接对应的 rs 如果权重为 0，则重新调度。然后重新编译和加载 IPVS 内核模块，再重新压测一下，发现问题解决了！没有报 “No route to host” 了。</p>
+<p>虽然通过改内核源码解决了，但我知道这不是一个好的解决方案，它会导致 IPVS 不支持连接的优雅结束，因为不再转发包给权重为 0 的 rs，存量的连接就会立即中断。</p>
+<p>继续陷入深思……</p>
+<p>这个实验只是证明了猜想：新连接匹配到了旧连接。那为什么会这样呢？难道新连接报文的五元组跟旧连接的相同了？</p>
+<p>经过一番思考，发现这个是有可能的。因为 ServiceA 作为 client 请求 ServiceB，不同请求的源 IP 始终是相同的，关键点在于源端口是否可能相同。由于 ServiceA 向 ServiceB 发起大量短连接，ServiceA 所在节点就会有大量 <code>TIME_WAIT</code> 状态的连接，需要等 2 分钟 (2*MSL) 才会清理，而由于连接量太大，每次发起的连接都会占用一个源端口，当源端口不够用了，就会重用 <code>TIME_WAIT</code> 状态连接的源端口，这个时候当报文进入 IPVS 模块，检测到它的五元组跟本地连接转发表中的某个连接一致(<code>TIME_WAIT</code> 状态)，就以为它是一个存量连接，然后直接将报文转发给这个连接之前对应的 rs 上，然而这个 rs 对应的 Pod 早已销毁，所以抓包看到的现象是将 SYN 发给了旧 Pod，并且无法收到 ACK，伴随着返回 ICMP 告知这个 IP 不可达，也被应用解释为 “No route to host”。</p>
+<p>后来无意间又发现一个还在 open 状态的 issue，虽然还没提到 “No route to host” 关键字，但讨论的跟我们这个其实是同一个问题。我也参与了讨论，有兴趣的同学可以看下：<a href="https://github.com/kubernetes/kubernetes/issues/81775" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/81775</a></p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>这个问题通常发生的场景就是类似于我们测试环境这种：ServiceA 对外提供服务，当外部发起请求，ServiceA 会通过 rpc 或 http 调用 ServiceB，如果外部请求量变大，ServiceA 调用 ServiceB 的量也会跟着变大，大到一定程度，ServiceA 所在节点源端口不够用，复用 <code>TIME_WAIT</code> 状态连接的源端口，导致五元组跟 IPVS 里连接转发表中的 <code>TIME_WAIT</code> 连接相同，IPVS 就认为这是一个存量连接的报文，就不判断权重直接转发给之前的 rs，导致转发到已销毁的 Pod，从而发生 “No route to host”。</p>
+<p>如何规避？集群规模小可以使用 iptables 模式，如果需要使用 ipvs 模式，可以增加 ServiceA 的副本，并且配置反亲和性 (podAntiAffinity)，让 ServiceA 的 Pod 部署到不同节点，分摊流量，避免流量集中到某一个节点，导致调用 ServiceB 时源端口复用。</p>
+<p>如何彻底解决？暂时还没有一个完美的方案。</p>
+<p>Issue 85517 讨论让 kube-proxy 支持自定义配置几种连接状态的超时时间，但这对 <code>TIME_WAIT</code> 状态无效。</p>
+<p>Issue 81308 讨论 IVPS 的优雅结束是否不考虑不活跃的连接 (包括 <code>TIME_WAIT</code> 状态的连接)，也就是只考虑活跃连接，当活跃连接数为 0 之后立即踢掉 rs。这个确实可以更快的踢掉 rs，但无法让优雅结束做到那么优雅了，并且有人测试了，即便是不考虑不活跃连接，当请求量很大，还是不能很快踢掉 rs，因为源端口复用还是会导致不断有新的连接占用旧的连接，在较新的内核版本，<code>SYN_RECV</code> 状态也被视为活跃连接，所以活跃连接数还是不会很快降到 0。</p>
+<p>这个问题的终极解决方案该走向何方，我们拭目以待，感兴趣的同学可以持续关注 issue 81775 并参与讨论。想学习更多 K8S 知识，可以关注本人的开源书《Kubernetes实践指南》: <a href="https://k8s.imroc.io" target="_blank" rel="noopener">https://k8s.imroc.io</a></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck46itosf000hm3uh43of7q4d" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-service-topology" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/11/26/service-topology/" class="article-date">
@@ -155,7 +232,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck46ijyrt000jlgoe8u5eb35h" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck46itosh000km3uhti75qczk" class="article-share-link">Share</a>
       
       
     </footer>
@@ -425,7 +502,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck46ijyrw000llgoefz2ibgw4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck46itosj000mm3uht9a9aph9" class="article-share-link">Share</a>
       
       
     </footer>
@@ -476,7 +553,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck46ijyrp000hlgoe7v0epfi1" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck46itosg000im3uhp2xpwazs" class="article-share-link">Share</a>
       
       
     </footer>
@@ -528,7 +605,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck46ijyrn000glgoe0wgxu3wb" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck46itose000gm3uhixk8nss2" class="article-share-link">Share</a>
       
       
     </footer>
@@ -638,7 +715,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck46ijyrk000elgoesexl737d" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck46itosb000em3uhpem2i8ql" class="article-share-link">Share</a>
       
       
     </footer>
@@ -697,7 +774,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck46ijyr20005lgoesridhams" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck46itorz0005m3uh0ypfis8h" class="article-share-link">Share</a>
       
       
     </footer>
@@ -737,7 +814,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck46ijyrs000ilgoe6vutvve4" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck46itosh000jm3uh14sfi53c" class="article-share-link">Share</a>
       
       
     </footer>
@@ -805,7 +882,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="ck46ijyqx0002lgoen8hqfri3" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="ck46itorw0002m3uht1nq8lq0" class="article-share-link">Share</a>
       
       
     </footer>
@@ -863,80 +940,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck46ijyrj000dlgoeu18nguab" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-kubernetes-vpa" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/04/30/kubernetes-vpa/" class="article-date">
-  <time datetime="2019-04-30T08:00:00.000Z" itemprop="datePublished">2019-04-30</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/04/30/kubernetes-vpa/">如何使用 Kubernetes VPA 实现资源动态扩展和回收</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://github.com/xiaoxubeii" target="_blank" rel="noopener">徐蓓</a></p>
-<h2 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h2><p>最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。</p>
-<h2 id="资源动态扩展"><a href="#资源动态扩展" class="headerlink" title="资源动态扩展"></a>资源动态扩展</h2><p>资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器个数。笔者研究方案的目的是为了提升集群资源使用率，所以这里单讨论资源纵向扩展。</p>
-<p>不过坦白来讲，资源纵向扩展首要目标并不是为了提高集群利用率，而是为了优化集群资源、提高资源可用性和性能。</p>
-<p>在 Kubernetes 中 <a href="https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler" target="_blank" rel="noopener">VPA</a> 项目主要是完成这项工作（主要针对 Pod）。</p>
-<h3 id="Kubernetes-VPA"><a href="#Kubernetes-VPA" class="headerlink" title="Kubernetes VPA"></a>Kubernetes VPA</h3><blockquote>
-<p>Vertical Pod Autoscaler (VPA) frees the users from necessity of setting up-to-date resource requests for the containers in their pods. When configured, it will set the requests automatically based on usage and thus allow proper scheduling onto nodes so that appropriate resource amount is available for each pod.</p>
-</blockquote>
-<p>以上是官方定义。简单来说是 Kubernetes VPA 可以根据实际负载动态设置 pod resource requests。</p>
-<p>Kubernetes VPA 包含以下组件：</p>
-<ul>
-<li>Recommender：用于根据监控指标结合内置机制给出资源建议值</li>
-<li>Updater：用于实时更新 pod resource requests</li>
-<li>History Storage：用于采集和存储监控数据</li>
-<li>Admission Controller: 用于在 pod 创建时修改 resource requests</li>
-</ul>
-<p>以下是架构图：</p>
-<p><img src="/images/15550662807076.jpg" alt=""></p>
-<p>主要流程是：<code>Recommender</code>在启动时从<code>History Storage</code>获取历史数据，根据内置机制修改<code>VPA API object</code>资源建议值。<code>Updater</code>监听<code>VPA API object</code>，依据建议值动态修改 pod resource requests。<code>VPA Admission Controller</code>则是用于 pod 创建时修改 pod resource requests。<code>History Storage</code>则是通过<code>Kubernetes Metrics API</code>采集和存储监控数据。</p>
-<p>Kubernetes VPA 的整体架构比较简单，流程也很清晰，理解起来并不困难。但里面隐藏的几个功能点，却是方案的核心所在。它们的质量直接影响了方案的成熟度和评价效果：</p>
-<p>1、如何设计 Recommendation model<br><code>Recommendation model</code>是集群优化的重中之重，它的好坏直接影响了集群资源优化的效果。就笔者目前了解，在 Kubernetes VPA 中这个模型是固定的，用户能做的是配置参数和数据源。</p>
-<p>从官方描述看：</p>
-<blockquote>
-<p>The request is calculated based on analysis of the current and previous runs of the container and other containers with similar properties (name, image, command, args). The recommendation model (MVP) assumes that the memory and CPU consumption are independent random variables with distribution equal to the one observed in the last N days (recommended value is N=8 to capture weekly peaks). A more advanced model in future could attempt to detect trends, periodicity and other time-related patterns.</p>
-</blockquote>
-<p>CPU 和内存的建议值均是依据<strong>历史数据+固定机制</strong>计算而成，并没有一套解释引擎能让用户自定义规则。这在一定程度上影响了<code>Recommendation model</code>的准确性。就笔者理解，集群优化和混合部署的核心难点在于寻找能准确描述集群负载的指标，建立指标模型，并最终通过优化模型而达到最终目的 - 不论是为了优化集群或提高集群使用率。这个过程类似机器学习：先依旧经验或特征工程寻找特征变量，建立模型后使用数据不断优化参数，最后得到可用模型。所以仅靠单一指标 - 比如 CPU 或内存使用率 - 所建立的固定模型并不能准确描述集群状态和资源瓶颈。不管是从指标的颗粒度或固定模型上来看，最终效果都不会太好。</p>
-<p>2、Pod 是否支持热更新<br>在 Kubernetes 中，pod resource requests 会影响 pod QoS 和容器的限制状态，比如驱逐策略、<code>OOM Score</code>和 cgroup 的限制参数等。如果不重建的话，单纯的修改 pod spec 只会影响调度策略。重建的话会导致 pod 重新调度，同时也在一定程度上降低了应用的可用性。官网列出一个更新策略<code>auto</code>，是可以<code>in-place</code>重建：</p>
-<blockquote>
-<p>“Auto”: VPA assigns resource requests on pod creation as well as updates them on existing pods using the preferred update mechanism. Currently this is equivalent to “Recreate” (see below). Once restart free (“in-place”) update of pod requests is available, it may be used as the preferred update mechanism by the “Auto” mode. NOTE: This feature of VPA is experimental and may cause downtime for your applications.</p>
-</blockquote>
-<p>目前应该没有完全实现。不过无论哪种方式，pod 重建貌似不可避免。</p>
-<p>3、Pod 实时更新是否支持模糊控制<br>由于 Pod 更新会涉及重建，那么实时更新的触发条件就不应依据一个固定的值，比如值的变化触发更新重建（显然不可取）、依据逻辑表达式触发更新重建（也不可取，极端情况下会在设定值上下不断触发）。此时就需要在离散的值之间加入缓冲范围。而这个范围的设置高度依赖经验和实际集群情况，不然的话又会影响方案的最终效果。</p>
-<p>总的来说，Kubernetes VPA 解决了资源纵向扩展的大部分工程问题。若应用于生产，还需做很多的个性化工作。</p>
-<h2 id="资源回收"><a href="#资源回收" class="headerlink" title="资源回收"></a>资源回收</h2><p>既然 Kubernetes VPA 主要目标不是提升资源使用率，那它和混合部署又有何关系？别急，我们先来回顾下集群混合部署中提升资源使用率的关键是什么。</p>
-<p>提升资源使用率最直观的方式，是在保证服务可用性的前提下尽量多的分配集群资源。我们知道在一般的集群管理软件中，调度器会为应用分配集群的可用资源。分配给应用的是逻辑资源，无需要和物理资源一一对应，比如可以超卖。并且应用持有的资源，一般情况下也不会全时段占用。在这种情况下，可将分配资源分为闲时和忙时。应用按照优先级区分，为高优先级的应用分配较多的资源。动态回收高优先级应用的闲时资源分配给低优先级应用使用，在高优先级应用负载升高时驱逐低优先级应用，从而达到提升资源使用率的目的。</p>
-<p>在 Kubernetes VPA 中缺少资源回收的机制，但<code>Recommender</code>却可以配合<code>Updater</code>动态修改 pod resource requests 的值。也就是说 <strong>pod resource requests - 推荐值 = 资源回收值</strong>。这间接实现了资源回收的功能。那么 Kubernetes 调度器就可将这部分资源分配给其他应用使用。当然实际方案不会这么简单。比如<code>Recommender</code>就不需要使用<code>History Storage</code>中的历史数据和计算规则。初始值设为 pod resource requests，实时获取监控数据，加个 buffer 即可。这可以算是 Kubernetes 简陋版的资源回收功能。至于回收后，资源再分配和资源峰值驱逐等又是另一套流程了。</p>
-<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>暂时还是打算基于 Kubernetes VPA 实现资源回收和混合部署功能，毕竟现成的轮子。至于集群负载指标和模型，就完全是一套经验工程了。只能在实际生产中慢慢积累，别无他法。</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="ck46ijyrm000flgoeqhw0labs" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck46itos9000dm3uhaqsfrjud" class="article-share-link">Share</a>
       
       
     </footer>
@@ -969,7 +973,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -980,6 +984,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2019/12/15/no-route-to-host/">Kubernetes 疑难杂症排查分享: 诡异的 No route to host</a>
+          </li>
         
           <li>
             <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
@@ -995,10 +1003,6 @@
         
           <li>
             <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
           </li>
         
       </ul>
