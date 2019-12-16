@@ -90,13 +90,13 @@
 <h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><p>之前没遇到滚动更新会报 “No route to host” 的问题，我们先看下滚动更新导致连接异常有哪些常见的报错:</p>
 <ul>
 <li><code>Connection reset by peer</code>: 连接被重置。通常是连接建立过，但 server 端发现 client 发的包不对劲就返回 RST，应用层就报错连接被重置。比如在 server 滚动更新过程中，client 给 server 发的请求还没完全结束，或者本身是一个类似 grpc 的多路复用长连接，当 server 对应的旧 Pod 删除(没有做优雅结束，停止时没有关闭连接)，新 Pod 很快创建启动并且刚好有跟之前旧 Pod 一样的 IP，这时 kube-proxy 也没感知到这个 IP 其实已经被删除然后又被重建了，针对这个 IP 的规则就不会更新，旧的连接依然发往这个 IP，但旧 Pod 已经不在了，后面继续发包时依然转发给这个 Pod IP，最终会被转发到这个有相同 IP 的新 Pod 上，而新 Pod 收到此包时检查报文发现不对劲，就返回 RST 给 client 告知将连接重置。针对这种情况，建议应用自身处理好优雅结束：Pod 进入 Terminating 状态后会发送 <code>SIGTERM</code> 信号给业务进程，业务进程的代码需处理这个信号，在进程退出前关闭所有连接。</li>
-<li><code>Connection refused</code>: 连接被拒绝。通常是连接还没建立，client 正在发 SYN 包请求建立连接，但到了 server 之后发现端口没监听，内核就返回 RST 包，然后应用层就报错连接被拒绝。比如在 server 滚动更新过程中，旧的 Pod 中的进程很快就停止了(网卡还未完全销毁)，但 client 所在节点的 iptables/ipvs 规则还没更新，包就可能会被转发到了这个停止的 Pod (由于 k8s 的 controller 模式，从 Pod 删除到 service 的 endpoint 更新，再到 kube-proxy watch 到更新并更新 节点上的 iptables/ipvs 规则，这个过程是异步的，中间存在一点时间差，所以有可能存在 Pod 中的进程已经监听，但 iptables/ipvs 规则还没更新的情况)。针对这种情况，建议给容器加一个 preStop，在真正销毁 Pod 之前等待一段时间，留时间给 kube-proxy 更新转发规则，更新完之后就不会再有新连接往这个旧 Pod 转发了，preStop 示例:</li>
-</ul>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">lifecycle:</span><br><span class="line">  preStop:</span><br><span class="line">    exec:</span><br><span class="line">      command:</span><br><span class="line">      - /bin/bash</span><br><span class="line">      - -c</span><br><span class="line">      - sleep 30</span><br></pre></td></tr></table></figure>
-<p>  另外，还可能是新的 Pod 启动比较慢，虽然状态已经 Ready，但实际上可能端口还没监听，新的请求被转发到这个还没完全启动的 Pod 就会报错连接被拒绝。针对这种情况，建议给容器加就绪检查 (readinessProbe)，让容器真正启动完之后才将其状态置为 Ready，然后 kube-proxy 才会更新转发规则，这样就能保证新的请求只被转发到完全启动的 Pod，readinessProbe 示例:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">readinessProbe:</span><br><span class="line">  httpGet:</span><br><span class="line">    path: /healthz</span><br><span class="line">    port: 80</span><br><span class="line">    httpHeaders:</span><br><span class="line">    - name: X-Custom-Header</span><br><span class="line">      value: Awesome</span><br><span class="line">  initialDelaySeconds: 15</span><br><span class="line">  timeoutSeconds: 1</span><br></pre></td></tr></table></figure>
-<ul>
-<li><code>Connection timed out</code>: 连接超时。通常是连接还没建立，client 发 SYN 请求建立连接一直等到超时时间都没有收到 ACK，然后就报错连接超时。这个可能场景跟前面 <code>Connection refused</code> 可能的场景类似，不同点在于端口有监听，但进程无法正常响应了: 转发规则还没更新，旧 Pod 的进程正在停止过程中，虽然端口有监听，但已经不响应了；或者转发规则更新了，新 Pod 端口也监听了，但还没有真正就绪，还没有能力处理新请求。针对这些情况的建议跟前面一样：加 preStop 和 readinessProbe。</li>
+<li><p><code>Connection refused</code>: 连接被拒绝。通常是连接还没建立，client 正在发 SYN 包请求建立连接，但到了 server 之后发现端口没监听，内核就返回 RST 包，然后应用层就报错连接被拒绝。比如在 server 滚动更新过程中，旧的 Pod 中的进程很快就停止了(网卡还未完全销毁)，但 client 所在节点的 iptables/ipvs 规则还没更新，包就可能会被转发到了这个停止的 Pod (由于 k8s 的 controller 模式，从 Pod 删除到 service 的 endpoint 更新，再到 kube-proxy watch 到更新并更新 节点上的 iptables/ipvs 规则，这个过程是异步的，中间存在一点时间差，所以有可能存在 Pod 中的进程已经没有监听，但 iptables/ipvs 规则还没更新的情况)。针对这种情况，建议给容器加一个 preStop，在真正销毁 Pod 之前等待一段时间，留时间给 kube-proxy 更新转发规则，更新完之后就不会再有新连接往这个旧 Pod 转发了，preStop 示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">lifecycle:</span></span><br><span class="line"><span class="attr">  preStop:</span></span><br><span class="line"><span class="attr">    exec:</span></span><br><span class="line"><span class="attr">      command:</span></span><br><span class="line"><span class="bullet">      -</span> <span class="string">/bin/bash</span></span><br><span class="line"><span class="bullet">      -</span> <span class="bullet">-c</span></span><br><span class="line"><span class="bullet">      -</span> <span class="string">sleep</span> <span class="number">30</span></span><br></pre></td></tr></table></figure>
+<p>另外，还可能是新的 Pod 启动比较慢，虽然状态已经 Ready，但实际上可能端口还没监听，新的请求被转发到这个还没完全启动的 Pod 就会报错连接被拒绝。针对这种情况，建议给容器加就绪检查 (readinessProbe)，让容器真正启动完之后才将其状态置为 Ready，然后 kube-proxy 才会更新转发规则，这样就能保证新的请求只被转发到完全启动的 Pod，readinessProbe 示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">readinessProbe:</span></span><br><span class="line"><span class="attr">  httpGet:</span></span><br><span class="line"><span class="attr">    path:</span> <span class="string">/healthz</span></span><br><span class="line"><span class="attr">    port:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">    httpHeaders:</span></span><br><span class="line"><span class="attr">    - name:</span> <span class="string">X-Custom-Header</span></span><br><span class="line"><span class="attr">      value:</span> <span class="string">Awesome</span></span><br><span class="line"><span class="attr">  initialDelaySeconds:</span> <span class="number">15</span></span><br><span class="line"><span class="attr">  timeoutSeconds:</span> <span class="number">1</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p><code>Connection timed out</code>: 连接超时。通常是连接还没建立，client 发 SYN 请求建立连接一直等到超时时间都没有收到 ACK，然后就报错连接超时。这个可能场景跟前面 <code>Connection refused</code> 可能的场景类似，不同点在于端口有监听，但进程无法正常响应了: 转发规则还没更新，旧 Pod 的进程正在停止过程中，虽然端口有监听，但已经不响应了；或者转发规则更新了，新 Pod 端口也监听了，但还没有真正就绪，还没有能力处理新请求。针对这些情况的建议跟前面一样：加 preStop 和 readinessProbe。</p>
+</li>
 </ul>
 <p>下面我们来继续分析下滚动更新时发生 <code>No route to host</code> 的可能情况。</p>
 <p>这个报错很明显，IP 无法路由，通常是将报文发到了一个已经彻底销毁的 Pod (网卡已经不在)。不可能发到一个网卡还没创建好的 Pod，因为即便不加存活检查，也是要等到 Pod 网络初始化完后才可能 Ready，然后 kube-proxy 才会更新转发规则。</p>
@@ -130,7 +130,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck46jk4oq000hk8o446w6z3bi" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck481mukm000hkkq08oackowd" class="article-share-link">Share</a>
       
       
     </footer>
@@ -232,7 +232,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck46jk4ot000kk8o4buzvub7y" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck481mukp000kkkq0cxy50lnf" class="article-share-link">Share</a>
       
       
     </footer>
@@ -502,7 +502,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck46jk4ov000mk8o4t2at146g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck481mukq000mkkq0i6vwsv3f" class="article-share-link">Share</a>
       
       
     </footer>
@@ -553,7 +553,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck46jk4or000ik8o45j3rcwe5" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck481mukn000ikkq0sxg6cexh" class="article-share-link">Share</a>
       
       
     </footer>
@@ -605,7 +605,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck46jk4op000gk8o468268sqg" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck481mukl000gkkq0aoay7wk4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -715,7 +715,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck46jk4ok000ek8o4euwa6srt" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck481muki000ekkq043r7cg45" class="article-share-link">Share</a>
       
       
     </footer>
@@ -774,7 +774,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck46jk4o10005k8o4cte3gjn1" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck481muk40005kkq0wcz7tf5j" class="article-share-link">Share</a>
       
       
     </footer>
@@ -814,7 +814,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck46jk4os000jk8o4zhi9rlft" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck481muko000jkkq0n7f4fx1x" class="article-share-link">Share</a>
       
       
     </footer>
@@ -882,7 +882,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="ck46jk4nw0002k8o4gy4rphjj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="ck481muk00002kkq0tm09mcmn" class="article-share-link">Share</a>
       
       
     </footer>
@@ -940,7 +940,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck46jk4oi000dk8o46oodht6i" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck481mukh000dkkq0rry446bh" class="article-share-link">Share</a>
       
       
     </footer>
