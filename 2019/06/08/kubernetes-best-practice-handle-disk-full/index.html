@@ -22,7 +22,7 @@
 <meta property="og:image" content="https://imroc.io/assets/blog/du-sh-containers.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/du-sh-diff.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/docker-images.png">
-<meta property="og:updated_time" content="2019-12-16T06:14:29.777Z">
+<meta property="og:updated_time" content="2020-01-13T06:53:40.345Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes 最佳实践：处理容器数据磁盘被写满">
 <meta name="twitter:description" content="作者: 陈鹏 容器数据磁盘被写满造成的危害:  不能创建 Pod (一直 ContainerCreating) 不能删除 Pod (一直 Terminating) 无法 exec 到容器  判断是否被写满: 容器数据目录大多会单独挂数据盘，路径一般是 /var/lib/docker，也可能是 /data/docker 或 /opt/docker，取决于节点被添加时的配置：  可通过 docker">
@@ -173,7 +173,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck481muki000ekkq043r7cg45" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck5c3d2iw000ejlsfx1ficd3t" class="article-share-link">Share</a>
       
       
     </footer>
@@ -218,7 +218,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -229,6 +229,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
+          </li>
         
           <li>
             <a href="/2019/12/15/no-route-to-host/">Kubernetes 疑难杂症排查分享: 诡异的 No route to host</a>
@@ -246,10 +250,6 @@
             <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
           </li>
         
-          <li>
-            <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
-          </li>
-        
       </ul>
     </div>
   </div>
@@ -262,7 +262,7 @@
   
   <div class="outer">
     <div id="footer-info" class="inner">
-      &copy; 2019 腾讯云容器团队<br>
+      &copy; 2020 腾讯云容器团队<br>
       Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>
