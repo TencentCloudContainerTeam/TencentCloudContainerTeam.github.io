@@ -3,7 +3,9 @@ title: "Kubernetes 疑难杂症排查分享: 诡异的 No route to host"
 date: 2019/12/15 12:03:00
 ---
 
-大家好，我是 roc，来自腾讯云容器服务(TKE)团队，之前发过一篇干货满满的爆火文章 [Kubernetes 网络疑难杂症排查分享](https://tencentcloudcontainerteam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/)，包含多个疑难杂症的排查案例分享，信息量巨大。这次我又带来了续集，只讲一个案例，但信息量也不小，Are you ready ?
+作者: [陈鹏](https://imroc.io/)
+
+之前发过一篇干货满满的爆火文章 [Kubernetes 网络疑难杂症排查分享](https://tencentcloudcontainerteam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/)，包含多个疑难杂症的排查案例分享，信息量巨大。这次我又带来了续集，只讲一个案例，但信息量也不小，Are you ready ?
 
 ## 问题反馈
 
