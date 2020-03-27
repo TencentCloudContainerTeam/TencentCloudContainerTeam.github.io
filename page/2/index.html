@@ -63,6 +63,74 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-capture-packets-in-container" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/05/19/capture-packets-in-container/" class="article-date">
+  <time datetime="2019-05-19T05:04:00.000Z" itemprop="datePublished">2019-05-19</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/05/19/capture-packets-in-container/">Kubernetes 问题定位技巧：容器内抓包</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<p>在使用 kubernetes 跑应用的时候，可能会遇到一些网络问题，比较常见的是服务端无响应(超时)或回包内容不正常，如果没找出各种配置上有问题，这时我们需要确认数据包到底有没有最终被路由到容器里，或者报文到达容器的内容和出容器的内容符不符合预期，通过分析报文可以进一步缩小问题范围。那么如何在容器内抓包呢？本文提供实用的脚本一键进入容器网络命名空间(netns)，使用宿主机上的tcpdump进行抓包。</p>
+<h2 id="使用脚本一键进入-pod-netns-抓包"><a href="#使用脚本一键进入-pod-netns-抓包" class="headerlink" title="使用脚本一键进入 pod netns 抓包"></a>使用脚本一键进入 pod netns 抓包</h2><ul>
+<li><p>发现某个服务不通，最好将其副本数调为1，并找到这个副本 pod 所在节点和 pod 名称</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl get pod -o wide</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>登录 pod 所在节点，将如下脚本粘贴到 shell (注册函数到当前登录的 shell，我们后面用)</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="function"><span class="title">e</span></span>() &#123;</span><br><span class="line">    <span class="built_in">set</span> -eu</span><br><span class="line">    ns=<span class="variable">$&#123;2-"default"&#125;</span></span><br><span class="line">    pod=`kubectl -n <span class="variable">$ns</span> describe pod <span class="variable">$1</span> | grep -Eo <span class="string">'docker://.*$'</span> | head -n 1 | sed <span class="string">'s/docker:\/\/\(.*\)$/\1/'</span>`</span><br><span class="line">    pid=`docker inspect -f &#123;&#123;.State.Pid&#125;&#125; <span class="variable">$pod</span>`</span><br><span class="line">    <span class="built_in">echo</span> <span class="string">"enter pod netns successfully for <span class="variable">$ns</span>/<span class="variable">$1</span>"</span></span><br><span class="line">    nsenter -n --target <span class="variable">$pid</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>一键进入 pod 所在的 netns，格式：<code>e POD_NAME NAMESPACE</code>，示例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">e istio-galley-58c7c7c646-m6568 istio-system</span><br><span class="line">e proxy-5546768954-9rxg6 <span class="comment"># 省略 NAMESPACE 默认为 default</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>这时已经进入 pod 的 netns，可以执行宿主机上的 <code>ip a</code> 或 <code>ifconfig</code> 来查看容器的网卡，执行 <code>netstat -tunlp</code> 查看当前容器监听了哪些端口，再通过 <code>tcpdump</code> 抓包：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tcpdump -i eth0 -w test.pcap port 80</span><br></pre></td></tr></table></figure>
+</li>
+<li><p><code>ctrl-c</code> 停止抓包，再用 <code>scp</code> 或 <code>sz</code> 将抓下来的包下载到本地使用 <code>wireshark</code> 分析，提供一些常用的 <code>wireshark</code> 过滤语法：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 使用 telnet 连上并发送一些测试文本，比如 "lbtest"，</span></span><br><span class="line"><span class="comment"># 用下面语句可以看发送的测试报文有没有到容器</span></span><br><span class="line">tcp contains <span class="string">"lbtest"</span></span><br><span class="line"><span class="comment"># 如果容器提供的是http服务，可以使用 curl 发送一些测试路径的请求，</span></span><br><span class="line"><span class="comment"># 通过下面语句过滤 uri 看报文有没有都容器</span></span><br><span class="line">http.request.uri==<span class="string">"/mytest"</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="脚本原理"><a href="#脚本原理" class="headerlink" title="脚本原理"></a>脚本原理</h3><p>我们解释下步骤二中用到的脚本的原理</p>
+<ul>
+<li><p>查看指定 pod 运行的容器 ID</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl describe pod &lt;pod&gt; -n mservice</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>获得容器进程的 pid</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker inspect -f &#123;&#123;.State.Pid&#125;&#125; &lt;container&gt;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>进入该容器的 network namespace</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">nsenter -n --target &lt;PID&gt;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>依赖宿主机的命名：<code>kubectl</code>, <code>docker</code>, <code>nsenter</code>, <code>grep</code>, <code>head</code>, <code>sed</code></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/19/capture-packets-in-container/" data-id="ck89nwpba0003o8kbygh2zq14" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-kubernetes-best-practice-grace-update" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/05/08/kubernetes-best-practice-grace-update/" class="article-date">
@@ -111,7 +179,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck5c3d2iu000djlsfwbldftfm" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ck89nwpbt000eo8kbzzw4nxrc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -184,7 +252,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="ck5c3d2iz000gjlsf9umtnj10" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="ck89nwpbw000ho8kbrrufufrs" class="article-share-link">Share</a>
       
       
     </footer>
@@ -254,7 +322,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="ck5c3d2ig0004jlsfltfoe623" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/17/google-borg/" data-id="ck89nwpbe0005o8kby4jyhadc" class="article-share-link">Share</a>
       
       
     </footer>
@@ -323,7 +391,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="ck5c3d2in0009jlsf9iq8u9pw" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/07/istio-cni/" data-id="ck89nwpbk000ao8kbzfkjch91" class="article-share-link">Share</a>
       
       
     </footer>
@@ -496,7 +564,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="ck5c3d2il0008jlsf3z9tp43c" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/01/istio-analysis-3/" data-id="ck89nwpbj0009o8kbw2f73vyv" class="article-share-link">Share</a>
       
       
     </footer>
@@ -625,7 +693,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="ck5c3d2ik0007jlsf0g9t7956" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/19/istio-analysis-2/" data-id="ck89nwpbh0008o8kb6zestg9v" class="article-share-link">Share</a>
       
       
     </footer>
@@ -855,7 +923,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="ck5c3d2ii0006jlsfqpu84i72" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/03/11/istio-analysis-1/" data-id="ck89nwpbg0007o8kb997amg78" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1554,7 +1622,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="ck5c3d2j4000mjlsf2w06513s" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/31/servicemesh-istio/" data-id="ck89nwpc2000no8kbkwuzr8ys" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1641,102 +1709,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="ck5c3d2ir000bjlsf9o5e4xx6" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-cgroup-leaking" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2018/12/29/cgroup-leaking/" class="article-date">
-  <time datetime="2018-12-29T09:00:00.000Z" itemprop="datePublished">2018-12-29</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2018/12/29/cgroup-leaking/">Cgroup泄漏--潜藏在你的集群中</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://github.com/honkiko" target="_blank" rel="noopener">洪志国</a></p>
-<h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>绝大多数的kubernetes集群都有这个隐患。只不过一般情况下，泄漏得比较慢，还没有表现出来而已。 </p>
-<p>一个pod可能泄漏两个memory cgroup数量配额。即使pod百分之百发生泄漏， 那也需要一个节点销毁过三万多个pod之后，才会造成后续pod创建失败。</p>
-<p>一旦表现出来，这个节点就彻底不可用了，必须重启才能恢复。</p>
-<h2 id="故障表现"><a href="#故障表现" class="headerlink" title="故障表现"></a>故障表现</h2><p>腾讯云SCF(Serverless Cloud Function)底层使用我们的TKE(Tencent Kubernetes Engine)，并且会在节点上频繁创建和消耗容器。</p>
-<p>SCF发现很多节点会出现类似以下报错，创建POD总是失败：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Dec 24 11:54:31 VM_16_11_centos dockerd[11419]: time=&quot;2018-12-24T11:54:31.195900301+08:00&quot; level=error msg=&quot;Handler for POST /v1.31/containers/b98d4aea818bf9d1d1aa84079e1688cd9b4218e008c58a8ef6d6c3c106403e7b/start returned error: OCI runtime create failed: container_linux.go:348: starting container process caused \&quot;process_linux.go:279: applying cgroup configuration for process caused \\\&quot;mkdir /sys/fs/cgroup/memory/kubepods/burstable/pod79fe803c-072f-11e9-90ca-525400090c71/b98d4aea818bf9d1d1aa84079e1688cd9b4218e008c58a8ef6d6c3c106403e7b: no space left on device\\\&quot;\&quot;: unknown&quot;</span><br></pre></td></tr></table></figure>
-<p>这个时候，到节点上尝试创建几十个memory cgroup (以root权限执行 <code>for i in</code>seq 1 20<code>;do mkdir /sys/fs/cgroup/memory/${i}; done</code>)，就会碰到失败：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir: cannot create directory &apos;/sys/fs/cgroup/memory/8&apos;: No space left on device</span><br></pre></td></tr></table></figure>
-<p>其实，dockerd出现以上报错时， 手动创建<strong><em>一个</em></strong>memory cgroup都会失败的。 不过有时候随着一些POD的运行结束，可能会多出来一些“配额”，所以这里是尝试创建20个memory cgroup。</p>
-<p>出现这样的故障以后，重启docker，释放内存等措施都没有效果，只有重启节点才能恢复。</p>
-<h2 id="复现条件"><a href="#复现条件" class="headerlink" title="复现条件"></a>复现条件</h2><p>docker和kubernetes社区都有关于这个问题的issue:</p>
-<ul>
-<li><a href="https://github.com/moby/moby/issues/29638" target="_blank" rel="noopener">https://github.com/moby/moby/issues/29638</a></li>
-<li><a href="https://github.com/kubernetes/kubernetes/issues/70324" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/70324</a></li>
-</ul>
-<p>网上有文章介绍了类似问题的分析和复现方法。如：<br><a href="http://www.linuxfly.org/kubernetes-19-conflict-with-centos7/?from=groupmessage" target="_blank" rel="noopener">http://www.linuxfly.org/kubernetes-19-conflict-with-centos7/?from=groupmessage</a></p>
-<p>不过按照文中的复现方法，我在<code>3.10.0-862.9.1.el7.x86_64</code>版本内核上并没有复现出来。</p>
-<p>经过反复尝试，总结出了必现的复现条件。 一句话感慨就是，把进程加入到一个开启了kmem accounting的memory cgroup<strong><em>并且执行fork系统调用</em></strong>。</p>
-<ol>
-<li>centos 3.10.0-862.9.1.el7.x86_64及以下内核， 4G以上空闲内存，root权限。</li>
-<li><p>把系统memory cgroup配额占满</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">for i in `seq 1 65536`;do mkdir /sys/fs/cgroup/memory/$&#123;i&#125;; done</span><br></pre></td></tr></table></figure>
-<p> 会看到报错：</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir: cannot create directory ‘/sys/fs/cgroup/memory/65530’: No space left on device</span><br></pre></td></tr></table></figure>
-<p> 这是因为这个版本内核写死了，最多只能有65535个memory cgroup共存。 systemd已经创建了一些，所以这里创建不到65535个就会遇到报错。</p>
-<p> 确认删掉一个memory cgroup, 就能腾出一个“配额”：</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">rmdir /sys/fs/cgroup/memory/1</span><br><span class="line">mkdir /sys/fs/cgroup/memory/test</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>给一个memory cgroup开启kmem accounting</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cd /sys/fs/cgroup/memory/test/</span><br><span class="line">echo 1 &gt; memory.kmem.limit_in_bytes</span><br><span class="line">echo -1 &gt; memory.kmem.limit_in_bytes</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>把一个进程加进某个memory cgroup, 并执行一次fork系统调用</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">最简单的就是把当前shell进程加进去：</span><br><span class="line">echo $$ &gt; /sys/fs/cgroup/memory/test/tasks</span><br><span class="line">sleep 100 &amp;</span><br><span class="line">cat /sys/fs/cgroup/memory/test/tasks</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>把该memory cgroup里面的进程都挪走</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">for p in `cat /sys/fs/cgroup/memory/test/tasks`;do echo $&#123;p&#125; &gt; /sys/fs/cgroup/memory/tasks; done</span><br><span class="line"></span><br><span class="line">cat /sys/fs/cgroup/memory/test/tasks  //这时候应该为空</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>删除这个memory cgroup</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">rmdir /sys/fs/cgroup/memory/test</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>验证刚才删除一个memory cgroup， 所占的配额并没有释放</p>
- <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mkdir /sys/fs/cgroup/memory/xx</span><br></pre></td></tr></table></figure>
-<p> 这时候会报错：<code>mkdir: cannot create directory ‘/sys/fs/cgroup/memory/xx’: No space left on device</code></p>
-</li>
-</ol>
-<h2 id="什么版本的内核有这个问题"><a href="#什么版本的内核有这个问题" class="headerlink" title="什么版本的内核有这个问题"></a>什么版本的内核有这个问题</h2><p>搜索内核commit记录，有一个commit应该是解决类似问题的：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">4bdfc1c4a943: 2015-01-08 memcg: fix destination cgroup leak on task charges migration [Vladimir Davydov]</span><br></pre></td></tr></table></figure>
-<p>这个commit在3.19以及4.x版本的内核中都已经包含。 不过从docker和kubernetes相关issue里面的反馈来看，内核中应该还有其他cgroup泄漏的代码路径， 4.14版本内核都还有cgroup泄漏问题。</p>
-<h2 id="规避办法"><a href="#规避办法" class="headerlink" title="规避办法"></a>规避办法</h2><p>不开启kmem accounting (以上复现步骤的第3步)的话，是不会发生cgroup泄漏的。</p>
-<p>kubelet和runc都会给memory cgroup开启kmem accounting。所以要规避这个问题，就要保证kubelet和runc，都别开启kmem accounting。下面分别进行说明。 </p>
-<h2 id="runc"><a href="#runc" class="headerlink" title="runc"></a>runc</h2><p>查看代码，发现在commit fe898e7 (2017-2-25, PR #1350)以后的runc版本中，都会默认开启kmem accounting。代码在libcontainer/cgroups/fs/kmem.go: (老一点的版本，代码在libcontainer/cgroups/fs/memory.go)<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">const cgroupKernelMemoryLimit = &quot;memory.kmem.limit_in_bytes&quot;</span><br><span class="line"></span><br><span class="line">func EnableKernelMemoryAccounting(path string) error &#123;</span><br><span class="line">        // Ensure that kernel memory is available in this kernel build. If it</span><br><span class="line">        // isn&apos;t, we just ignore it because EnableKernelMemoryAccounting is</span><br><span class="line">        // automatically called for all memory limits.</span><br><span class="line">        if !cgroups.PathExists(filepath.Join(path, cgroupKernelMemoryLimit)) &#123;</span><br><span class="line">                return nil</span><br><span class="line">        &#125;</span><br><span class="line">        // We have to limit the kernel memory here as it won&apos;t be accounted at all</span><br><span class="line">        // until a limit is set on the cgroup and limit cannot be set once the</span><br><span class="line">        // cgroup has children, or if there are already tasks in the cgroup.</span><br><span class="line">        for _, i := range []int64&#123;1, -1&#125; &#123;</span><br><span class="line">                if err := setKernelMemory(path, i); err != nil &#123;</span><br><span class="line">                        return err</span><br><span class="line">                &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        return nil</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
-<p>runc社区也注意到这个问题，并做了比较灵活的修复： <a href="https://github.com/opencontainers/runc/pull/1921" target="_blank" rel="noopener">https://github.com/opencontainers/runc/pull/1921</a></p>
-<p>这个修复给runc增加了”nokmem”编译选项。缺省的release版本没有使用这个选项。 自己使用nokmem选项编译runc的方法：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cd $GO_PATH/src/github.com/opencontainers/runc/</span><br><span class="line">make BUILDTAGS=&quot;seccomp nokmem&quot;</span><br></pre></td></tr></table></figure>
-<h2 id="kubelet"><a href="#kubelet" class="headerlink" title="kubelet"></a>kubelet</h2><p>kubelet在创建pod对应的cgroup目录时，也会调用libcontianer中的代码对cgroup做设置。在   <code>pkg/kubelet/cm/cgroup_manager_linux.go</code>的Create方法中，会调用Manager.Apply方法，最终调用<code>vendor/github.com/opencontainers/runc/libcontainer/cgroups/fs/memory.go</code>中的MemoryGroup.Apply方法，开启kmem accounting。</p>
-<p>这里也需要进行处理，可以不开启kmem accounting， 或者通过命令行参数来控制是否开启。</p>
-<p>kubernetes社区也有issue讨论这个问题：<a href="https://github.com/kubernetes/kubernetes/issues/70324" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/issues/70324</a></p>
-<p>但是目前还没有结论。我们TKE先直接把这部分代码注释掉了，不开启kmem accounting。</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2018/12/29/cgroup-leaking/" data-id="ck5c3d2ie0003jlsf1wbe3xhc" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/01/10/k8s-traffic-copy/" data-id="ck89nwpbp000co8kbxj8uzzgk" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1769,7 +1742,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -1780,6 +1753,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
+          </li>
         
           <li>
             <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
@@ -1795,10 +1772,6 @@
         
           <li>
             <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
-          </li>
-        
-          <li>
-            <a href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
           </li>
         
       </ul>
