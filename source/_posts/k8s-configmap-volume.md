@@ -165,14 +165,13 @@ immutable: true
 
 2.  配置所有节点Kubelet使用`Cache`策略: 
 
-   - 创建`/etc/kubernetes/kubelet.conf`，内容如下：
+ - 创建`/etc/kubernetes/kubelet.conf`，内容如下：
 
-    ```yaml
+```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 configMapAndSecretChangeDetectionStrategy: Cache
-    ```
-
-    - kubelet增加参数: `--config=/etc/kubernetes/kubelet.conf`，重启
+```
+ - kubelet增加参数: `--config=/etc/kubernetes/kubelet.conf`，重启
 3.  设置所有节点的ttl为期望值，比如1000天:  `kubectl annotate node <node> node.alpha.kubernetes.io/ttl=86400000 --overwrite`
     。设置1000天并不是1000天内真的不更新。在Kubelet新建Pod时，它所引用的ConfigMap的cache都会被重置和更新。
