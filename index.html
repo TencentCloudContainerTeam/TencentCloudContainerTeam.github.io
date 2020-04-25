@@ -63,6 +63,88 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-k8s-configmap-volume" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/04/24/k8s-configmap-volume/" class="article-date">
+  <time datetime="2020-04-24T07:00:00.000Z" itemprop="datePublished">2020-04-24</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/borgerli" target="_blank" rel="noopener">李波</a></p>
+<h2 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h2><p>有客户反馈在大集群(几千节点)中大量使用ConfigMap卷时，会给集群带来很大负载和压力，这里我们分析下原因以及缓解方案。</p>
+<h2 id="Kubelet如何管理ConfigMap"><a href="#Kubelet如何管理ConfigMap" class="headerlink" title="Kubelet如何管理ConfigMap"></a>Kubelet如何管理ConfigMap</h2><p>我们先来看下Kubelet是如何管理ConfigMap的。</p>
+<p>Kubelet在启动的时候，会创建ConfigMapManager（以及SecretManager），用来管理本机运行的Pod用到的ConfigMap（及Secret，下面只讨论ConfigMap）对象，功能包括获取及更新这些对象的内容，以及为其他组件比如VolumeManager提供获取这些对象内容的服务。</p>
+<p>那Kubelet是如何获取和更新ConfigMap呢？ k8s提供了三种检测资源更新的策略(<code>ResourceChangeDetectionStrategy</code>)</p>
+<h3 id="WatchChangeDetectionStrategy-Watch"><a href="#WatchChangeDetectionStrategy-Watch" class="headerlink" title="WatchChangeDetectionStrategy(Watch)"></a>WatchChangeDetectionStrategy(Watch)</h3><p>这是<code>1.12+</code>的默认策略。</p>
+<p>看名字，这个策略使用K8s经典的ListWatch模式。在Pod创建时，对每个引用到的ConfigMap，都会先从ApiServer缓存（指定ResourceVersion=”0”）获取，然后对后续变化进行Watch。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// pkg/kubelet/util/manager/watch_based_manager.go</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *objectCache)</span> <span class="title">newReflector</span><span class="params">(namespace, name <span class="keyword">string</span>)</span> *<span class="title">objectCacheItem</span></span> &#123;</span><br><span class="line">	fieldSelector := fields.Set&#123;<span class="string">"metadata.name"</span>: name&#125;.AsSelector().String()</span><br><span class="line">	listFunc := <span class="function"><span class="keyword">func</span><span class="params">(options metav1.ListOptions)</span> <span class="params">(runtime.Object, error)</span></span> &#123;</span><br><span class="line">		options.FieldSelector = fieldSelector</span><br><span class="line">		<span class="keyword">return</span> c.listObject(namespace, options)</span><br><span class="line">	&#125;</span><br><span class="line">	watchFunc := <span class="function"><span class="keyword">func</span><span class="params">(options metav1.ListOptions)</span> <span class="params">(watch.Interface, error)</span></span> &#123;</span><br><span class="line">		options.FieldSelector = fieldSelector</span><br><span class="line">		<span class="keyword">return</span> c.watchObject(namespace, options)</span><br><span class="line">	&#125;</span><br><span class="line">	store := c.newStore()</span><br><span class="line">	reflector := cache.NewNamedReflector(</span><br><span class="line">		fmt.Sprintf(<span class="string">"object-%q/%q"</span>, namespace, name),</span><br><span class="line">		&amp;cache.ListWatch&#123;ListFunc: listFunc, WatchFunc: watchFunc&#125;,</span><br><span class="line">		c.newObject(),</span><br><span class="line">		store,</span><br><span class="line">		<span class="number">0</span>,</span><br><span class="line">	)</span><br><span class="line">	...</span><br><span class="line">	...</span><br></pre></td></tr></table></figure>
+<p>重点强调下，是<strong>对每一个ConfigMap都会创建一个Watch</strong>。如果大量使用CongiMap，并且集群规模很大，假设平均每个节点有100个ConfigMap，集群有2000个节点，就会创建20w个watch。经过测试（测试结果如下图，20w个watch），单纯大量的watch会对ApiServer造成一定的内存压力，对Etcd则基本没有压力。</p>
+<h4 id="ListWatch压力测试"><a href="#ListWatch压力测试" class="headerlink" title="ListWatch压力测试"></a>ListWatch压力测试</h4><p><img src="https://github.com/TencentCloudContainerTeam/TencentCloudContainerTeam.github.io/raw/develop/source/_posts/res/images/configmap-5node-20w-watch.png" alt="&#39;ListWatch压力测试结果&#39;"></p>
+<p>测试采用单节点的ApiServer（16核32G）和单节点的Etcd，并停止所有（共5个）节点kubelet服务以及删除所有非kube-system的负载，并把5个节点作为客户端，每个有间隔的发起4w个ListWatch。<br>从上图的测试结果，可以看到在20w ListWatch创建期间，ApiServer的内存增长到20G左右，CPU使用率在25%左右（创建完成后，使用率降回原来水平），连接数增持长并稳定到965个左右，而Etcd的内存，CPU核连接数无明显变化。粗略计算，每个watch占用<strong>100KB</strong>左右的内存。</p>
+<h3 id="TTLCacheChangeDetectionStrategy-Cache"><a href="#TTLCacheChangeDetectionStrategy-Cache" class="headerlink" title="TTLCacheChangeDetectionStrategy(Cache)"></a>TTLCacheChangeDetectionStrategy(Cache)</h3><p>这是<code>1.10</code>及<code>1.11</code>版本的默认策略，且不可通过参数或者配置文件修改。</p>
+<p>看名字，这是带TTL的缓存方式。第一次获取时，从ApiServer获取最新内容，超过TTL后，如果读取ConfigMap，会从ApiServer缓存获取(Get请求指定ResouceVersion=0)进行刷新，以减小对ApiServer和Etcd的压力。<br><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// pkg/kubelet/util/manager/cache_based_manager.go</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *objectStore)</span> <span class="title">Get</span><span class="params">(namespace, name <span class="keyword">string</span>)</span> <span class="params">(runtime.Object, error)</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">	<span class="keyword">if</span> data.err != <span class="literal">nil</span> || !fresh &#123;</span><br><span class="line">		klog.V(<span class="number">1</span>).Infof(<span class="string">"data is null or object is not fresh: err=%v, fresh=%v"</span>, fresh)</span><br><span class="line">		opts := metav1.GetOptions&#123;&#125;</span><br><span class="line">		<span class="keyword">if</span> data.object != <span class="literal">nil</span> &amp;&amp; data.err == <span class="literal">nil</span> &#123;</span><br><span class="line">			util.FromApiserverCache(&amp;opts) <span class="comment">//opts.ResourceVersion = "0"</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		object, err := s.getObject(namespace, name, opts)</span><br><span class="line">...</span><br></pre></td></tr></table></figure></p>
+<p>TTL时间首先会从节点的<code>Annotation[&quot;node.alpha.kubernetes.io/ttl&quot;]</code>获取，如果节点没有设置，那么会使用默认值1分钟。</p>
+<p><code>node.alpha.kubernetes.io/ttl</code>由kube-controller-manager中的TTLController根据集群节点数自动设置，具体规则如下(例如100个节点及以下规模的集群，ttl是0s；随着集群规模变大，节点数大于100小于500时，节点ttl变为15s；当集群规模超过100又减小，少于90个节点时，节点的ttl又变回0s)：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// pkg/controller/ttl/ttl_controller.go</span></span><br><span class="line">	ttlBoundaries = []ttlBoundary&#123;</span><br><span class="line">		&#123;sizeMin: <span class="number">0</span>, sizeMax: <span class="number">100</span>, ttlSeconds: <span class="number">0</span>&#125;,</span><br><span class="line">		&#123;sizeMin: <span class="number">90</span>, sizeMax: <span class="number">500</span>, ttlSeconds: <span class="number">15</span>&#125;,</span><br><span class="line">		&#123;sizeMin: <span class="number">450</span>, sizeMax: <span class="number">1000</span>, ttlSeconds: <span class="number">30</span>&#125;,</span><br><span class="line">		&#123;sizeMin: <span class="number">900</span>, sizeMax: <span class="number">2000</span>, ttlSeconds: <span class="number">60</span>&#125;,</span><br><span class="line">		&#123;sizeMin: <span class="number">1800</span>, sizeMax: <span class="number">10000</span>, ttlSeconds: <span class="number">300</span>&#125;,</span><br><span class="line">		&#123;sizeMin: <span class="number">9000</span>, sizeMax: math.MaxInt32, ttlSeconds: <span class="number">600</span>&#125;,</span><br><span class="line">	&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="GetChangeDetectionStrategy-Get"><a href="#GetChangeDetectionStrategy-Get" class="headerlink" title="GetChangeDetectionStrategy(Get)"></a>GetChangeDetectionStrategy(Get)</h3><p>这是最简单直接粗暴的方式，每次获取ConfigMap时，都访问ApiServer从Etcd读取最新版本。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// pkg/kubelet/configmap/configmap_manager.go</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *simpleConfigMapManager)</span> <span class="title">GetConfigMap</span><span class="params">(namespace, name <span class="keyword">string</span>)</span> <span class="params">(*v1.ConfigMap, error)</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> s.kubeClient.CoreV1().ConfigMaps(namespace).Get(name, metav1.GetOptions&#123;&#125;)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="ConfigMap卷的自动更新机制"><a href="#ConfigMap卷的自动更新机制" class="headerlink" title="ConfigMap卷的自动更新机制"></a>ConfigMap卷的自动更新机制</h2><p>Kubelet在Pod创建成功后，会把Pod放到podWorker的工作队列，并指定延迟1分钟(<code>--sync-frequency</code>，默认1m)才能出队列被获取。<br>Kubelet在sync逻辑中，会在延迟过后取到Pod进行同步，包括同步Volume状态。VolumeManager在同步Volume时会看它的类型是否需要重新挂载(<code>RequiresRemount() bool</code>)，<code>ConfigMap</code>、<code>Secret</code>、<code>downwardAPI</code>及<code>Projected</code>四种VolumePlugin，这个方法都返回<code>true</code>，需要重新挂载。</p>
+<p>因此每隔1分钟多，Kubelet都会访问ConfigMapManager，去获取本机Pod使用的ConfigMap的最新内容。这个操作对于Watch类型的策略，没有影响，不会对ApiServer及Etcd带来额外的压力；对于ttl很小的Cache及Get类型的策略，会给ApiServer及Etcd带来压力。</p>
+<h2 id="大集群方案"><a href="#大集群方案" class="headerlink" title="大集群方案"></a>大集群方案</h2><p>从上面的分析看，一般小规模的集群或者ConfigMap（及Secret）用量不大的集群，可以使用默认的Watch策略。如果集群规模比较大，并且大量使用ConfigMap，默认的Watch策略会对ApiServer带来内存压力。在实际生产集群，ApiServer除了处理这些watch，还会执行很多其他任务，相互之间共享抢占系统资源，会加重和放大对ApiServer的负载，影响服务。</p>
+<p>同时，实际上我们很多应用并不需要通过修改ConfigMap动态更新配置的功能，一方面在大集群时会带来不必要的压力，另一方面，如1.18的这个<a href="https://github.com/kubernetes/enhancements/blob/master/keps/sig-storage/20191117-immutable-secrets-configmaps.md" target="_blank" rel="noopener">KEP</a>所考虑的，实时更新ConfigMap或者Secret，如果内容出现错误，会导致应用异常，在配置发生变化时，更推荐采用滚动更新的方式来更新应用。</p>
+<p>在大集群时，我们可以怎么使用和管理ConfigMap，来减轻对集群的负载压力呢？</p>
+<h3 id="1-18版本"><a href="#1-18版本" class="headerlink" title="1.18版本"></a>1.18版本</h3><p>社区也注意到了这个问题（刚才提到的<a href="https://github.com/kubernetes/enhancements/blob/master/keps/sig-storage/20191117-immutable-secrets-configmaps.md" target="_blank" rel="noopener">KEP</a>），增加了一个新的特性<code>ImmutableEphemeralVolumes</code>，允许用户设置ConfigMap（及Secrets）为不可变（<code>immutable: true</code>），这样Kubelet就不会去Watch这些ConfigMap的变化了。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">...</span><br><span class="line">		<span class="keyword">if</span> utilfeature.DefaultFeatureGate.Enabled(features.ImmutableEphemeralVolumes) &amp;&amp; c.isImmutable(object) &#123;</span><br><span class="line">			<span class="keyword">if</span> item.stop() &#123;</span><br><span class="line">				klog.V(<span class="number">4</span>).Infof(<span class="string">"Stopped watching for changes of %q/%q - object is immutable"</span>, namespace, name)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<h4 id="开启ImmutableEphemeralVolumes"><a href="#开启ImmutableEphemeralVolumes" class="headerlink" title="开启ImmutableEphemeralVolumes"></a>开启ImmutableEphemeralVolumes</h4><p>ImmutableEphemeralVolumes是alpha特性，需要设置kubelet参数开启它：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">--feature-gates=ImmutableEphemeralVolumes=<span class="literal">true</span></span><br></pre></td></tr></table></figure>
+<h4 id="ConfigMap设置为不可变"><a href="#ConfigMap设置为不可变" class="headerlink" title="ConfigMap设置为不可变"></a>ConfigMap设置为不可变</h4><p>ConfigMap设置<code>immutable</code>为true</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">ConfigMap</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">immutable-cm</span></span><br><span class="line"><span class="attr">data:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">tencent</span></span><br><span class="line"><span class="attr">immutable:</span> <span class="literal">true</span></span><br></pre></td></tr></table></figure>
+<h3 id="之前版本"><a href="#之前版本" class="headerlink" title="之前版本"></a>之前版本</h3><p>在1.18之前的版本，我们可以使用<code>Cache</code>策略来代替<code>Watch</code>。</p>
+<ol>
+<li><p>关闭<code>TTLController</code>: kube-controller-manager启动参数增加 <code>--controllers=-ttl,*</code>，重启。</p>
+</li>
+<li><p>配置所有节点Kubelet使用<code>Cache</code>策略: </p>
+<ul>
+<li>创建<code>/etc/kubernetes/kubelet.conf</code>，内容如下：</li>
+</ul>
+</li>
+</ol>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">kubelet.config.k8s.io/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">KubeletConfiguration</span></span><br><span class="line"><span class="attr">configMapAndSecretChangeDetectionStrategy:</span> <span class="string">Cache</span></span><br></pre></td></tr></table></figure>
+<ul>
+<li>kubelet增加参数: <code>--config=/etc/kubernetes/kubelet.conf</code>，重启<ol start="3">
+<li>设置所有节点的ttl为期望值，比如1000天:  <code>kubectl annotate node &lt;node&gt; node.alpha.kubernetes.io/ttl=86400000 --overwrite</code><br>。设置1000天并不是1000天内真的不更新。在Kubelet新建Pod时，它所引用的ConfigMap的cache都会被重置和更新。</li>
+</ol>
+</li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ck9ft6y8j000bbqotzvpw9yc3" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-build-cloud-native-large-scale-distributed-monitoring-system-1" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" class="article-date">
@@ -126,7 +208,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck89nwpb70002o8kbmxebkc7s" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck9ft6y830002bqotn9asg9z3" class="article-share-link">Share</a>
       
       
     </footer>
@@ -294,7 +376,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ck89nwpbw000go8kbgh3pxjfa" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ck9ft6y8t000hbqotkost5821" class="article-share-link">Share</a>
       
       
     </footer>
@@ -372,7 +454,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck89nwpby000jo8kbq9xd309x" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck9ft6y8w000kbqoty3susshz" class="article-share-link">Share</a>
       
       
     </footer>
@@ -475,7 +557,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck89nwpc1000mo8kb0tj2628j" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck9ft6y8z000nbqot13emdqdx" class="article-share-link">Share</a>
       
       
     </footer>
@@ -746,7 +828,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck89nwpc3000oo8kbfra22k3a" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck9ft6y91000pbqotjy9k15ze" class="article-share-link">Share</a>
       
       
     </footer>
@@ -797,7 +879,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck89nwpbz000ko8kbishxolgj" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck9ft6y8x000lbqot4i7drm0d" class="article-share-link">Share</a>
       
       
     </footer>
@@ -849,7 +931,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck89nwpbx000io8kbrr9225ou" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck9ft6y8v000jbqotnp0me58i" class="article-share-link">Share</a>
       
       
     </footer>
@@ -959,7 +1041,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck89nwpbv000fo8kbmj7sqxgz" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck9ft6y8s000gbqot1zvesie1" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1018,47 +1100,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck89nwpbf0006o8kbgqk7pzna" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-scale-keepalive-service" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/06/06/scale-keepalive-service/" class="article-date">
-  <time datetime="2019-06-06T13:59:00.000Z" itemprop="datePublished">2019-06-06</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/06/06/scale-keepalive-service/">Kubernetes 最佳实践：解决长连接服务扩容失效</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<p>在现网运营中，有很多场景为了提高效率，一般都采用建立长连接的方式来请求。我们发现在客户端以长连接请求服务端的场景下，K8S的自动扩容会失效。原因是客户端长连接一直保留在老的Pod容器中，新扩容的Pod没有新的连接过来，导致K8S按照步长扩容第一批Pod之后就停止了扩容操作，而且新扩容的Pod没能承载请求，进而出现服务过载的情况，自动扩容失去了意义。</p>
-<p>对长连接扩容失效的问题，我们的解决方法是将长连接转换为短连接。我们参考了 nginx keepalive 的设计，nginx 中 keepalive_requests 这个配置项设定了一个TCP连接能处理的最大请求数，达到设定值(比如1000)之后服务端会在 http 的 Header 头标记 “<code>Connection:close</code>”，通知客户端处理完当前的请求后关闭连接，新的请求需要重新建立TCP连接，所以这个过程中不会出现请求失败，同时又达到了将长连接按需转换为短连接的目的。通过这个办法客户端和云K8S服务端处理完一批请求后不断的更新TCP连接，自动扩容的新Pod能接收到新的连接请求，从而解决了自动扩容失效的问题。</p>
-<p>由于Golang并没有提供方法可以获取到每个连接处理过的请求数，我们重写了 <code>net.Listener</code> 和 <code>net.Conn</code>，注入请求计数器，对每个连接处理的请求做计数，并通过 <code>net.Conn.LocalAddr()</code> 获得计数值，判断达到阈值 1000 后在返回的 Header 中插入 “<code>Connection:close</code>” 通知客户端关闭连接，重新建立连接来发起请求。以上处理逻辑用 Golang 实现示例代码如下：</p>
-<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line"> <span class="string">"net"</span></span><br><span class="line"> <span class="string">"github.com/gin-gonic/gin"</span></span><br><span class="line"> <span class="string">"net/http"</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="comment">//重新定义net.Listener</span></span><br><span class="line"><span class="keyword">type</span> counterListener <span class="keyword">struct</span> &#123;</span><br><span class="line"> net.Listener</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//重写net.Listener.Accept(),对接收到的连接注入请求计数器</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *counterListener)</span> <span class="title">Accept</span><span class="params">()</span> <span class="params">(net.Conn, error)</span></span> &#123;</span><br><span class="line"> conn, err := c.Listener.Accept()</span><br><span class="line"> <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line"> &#125;</span><br><span class="line"> <span class="keyword">return</span> &amp;counterConn&#123;Conn: conn&#125;, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//定义计数器counter和计数方法Increment()</span></span><br><span class="line"><span class="keyword">type</span> counter <span class="keyword">int</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *counter)</span> <span class="title">Increment</span><span class="params">()</span> <span class="title">int</span></span> &#123;</span><br><span class="line"> *c++</span><br><span class="line"> <span class="keyword">return</span> <span class="keyword">int</span>(*c)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//重新定义net.Conn,注入计数器ct</span></span><br><span class="line"><span class="keyword">type</span> counterConn <span class="keyword">struct</span> &#123;</span><br><span class="line"> net.Conn</span><br><span class="line"> ct counter</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//重写net.Conn.LocalAddr()，返回本地网络地址的同时返回该连接累计处理过的请求数</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *counterConn)</span> <span class="title">LocalAddr</span><span class="params">()</span> <span class="title">net</span>.<span class="title">Addr</span></span> &#123;</span><br><span class="line"> <span class="keyword">return</span> &amp;counterAddr&#123;c.Conn.LocalAddr(), &amp;c.ct&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//定义TCP连接计数器,指向连接累计请求的计数器</span></span><br><span class="line"><span class="keyword">type</span> counterAddr <span class="keyword">struct</span> &#123;</span><br><span class="line"> net.Addr</span><br><span class="line"> *counter</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line"> r := gin.New()</span><br><span class="line"> r.Use(<span class="function"><span class="keyword">func</span><span class="params">(c *gin.Context)</span></span> &#123;</span><br><span class="line">  localAddr := c.Request.Context().Value(http.LocalAddrContextKey)</span><br><span class="line">  <span class="keyword">if</span> ct, ok := localAddr.(<span class="keyword">interface</span>&#123; Increment() <span class="keyword">int</span> &#125;); ok &#123;</span><br><span class="line">   <span class="keyword">if</span> ct.Increment() &gt;= <span class="number">1000</span> &#123;</span><br><span class="line">    c.Header(<span class="string">"Connection"</span>, <span class="string">"close"</span>)</span><br><span class="line">   &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  c.Next()</span><br><span class="line"> &#125;)</span><br><span class="line"> r.GET(<span class="string">"/"</span>, <span class="function"><span class="keyword">func</span><span class="params">(c *gin.Context)</span></span> &#123;</span><br><span class="line">  c.String(<span class="number">200</span>, <span class="string">"plain/text"</span>, <span class="string">"hello"</span>)</span><br><span class="line"> &#125;)</span><br><span class="line"> l, err := net.Listen(<span class="string">"tcp"</span>, <span class="string">":8080"</span>)</span><br><span class="line"> <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">  <span class="built_in">panic</span>(err)</span><br><span class="line"> &#125;</span><br><span class="line"> err = http.Serve(&amp;counterListener&#123;l&#125;, r)</span><br><span class="line"> <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">  <span class="built_in">panic</span>(err)</span><br><span class="line"> &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck89nwpc0000lo8kbx63wibd7" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck9ft6y8b0006bqot8gdpx14g" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1091,7 +1133,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -1102,6 +1144,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
         
           <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
@@ -1117,10 +1163,6 @@
         
           <li>
             <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
-          </li>
-        
-          <li>
-            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
           </li>
         
       </ul>

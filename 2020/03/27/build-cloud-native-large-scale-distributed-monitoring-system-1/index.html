@@ -21,7 +21,7 @@
 <meta property="og:image" content="https://imroc.io/assets/blog/prometheus-remotewirte.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/prometheus-federation.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/prometheus-ha.png">
-<meta property="og:updated_time" content="2020-03-27T04:04:32.255Z">
+<meta property="og:updated_time" content="2020-04-25T15:58:47.792Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段">
 <meta name="twitter:description" content="作者: 陈鹏 概述Prometheus 几乎已成为监控领域的事实标准，它自带高效的时序数据库存储，可以让单台 Prometheus 能够高效的处理大量的数据，还有友好并且强大的 PromQL 语法，可以用来灵活的查询各种监控数据以及配置告警规则，同时它的 pull 模型指标采集方式被广泛采纳，非常多的应用都实现了 Prometheus 的 metrics 接口以暴露自身各项数据指标让 Promet">
@@ -135,7 +135,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck89nwpb70002o8kbmxebkc7s" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck9ft6y830002bqotn9asg9z3" class="article-share-link">Share</a>
       
       
     </footer>
@@ -143,6 +143,15 @@
   
     
 <nav id="article-nav">
+  
+    <a href="/2020/04/24/k8s-configmap-volume/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          大规模使用ConfigMap卷的负载分析及缓解方案
+        
+      </div>
+    </a>
   
   
     <a href="/2020/01/13/kubernetes-overflow-and-drop/" id="article-nav-older" class="article-nav-link-wrap">
@@ -171,7 +180,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -182,6 +191,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
         
           <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
@@ -197,10 +210,6 @@
         
           <li>
             <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
-          </li>
-        
-          <li>
-            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
           </li>
         
       </ul>

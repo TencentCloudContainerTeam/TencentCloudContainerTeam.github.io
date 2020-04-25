@@ -16,7 +16,7 @@
 <meta property="og:description" content="作者: 陈鹏 大家好，我是 roc，来自腾讯云容器服务(TKE)团队，今天给大家介绍下我参与开发的一个 k8s v1.17 新特性: 拓扑感知服务路由。 名词解释 拓扑域: 表示在集群中的某一类 “地方”，比如某节点、某机架、某可用区或某地域等，这些都可以作为某种拓扑域。 endpoint: k8s 某个服务的某个 ip+port，通常是 pod 的 ip+port。 service: k8s 的">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://imroc.io/assets/blog/service-topology.png">
-<meta property="og:updated_time" content="2020-03-27T04:04:32.267Z">
+<meta property="og:updated_time" content="2020-04-25T15:58:47.804Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="k8s v1.17 新特性预告: 拓扑感知服务路由">
 <meta name="twitter:description" content="作者: 陈鹏 大家好，我是 roc，来自腾讯云容器服务(TKE)团队，今天给大家介绍下我参与开发的一个 k8s v1.17 新特性: 拓扑感知服务路由。 名词解释 拓扑域: 表示在集群中的某一类 “地方”，比如某节点、某机架、某可用区或某地域等，这些都可以作为某种拓扑域。 endpoint: k8s 某个服务的某个 ip+port，通常是 pod 的 ip+port。 service: k8s 的">
@@ -160,7 +160,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck89nwpc1000mo8kb0tj2628j" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck9ft6y8z000nbqot13emdqdx" class="article-share-link">Share</a>
       
       
     </footer>
@@ -205,7 +205,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -216,6 +216,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
         
           <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
@@ -231,10 +235,6 @@
         
           <li>
             <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
-          </li>
-        
-          <li>
-            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
           </li>
         
       </ul>

@@ -16,7 +16,7 @@
 <meta property="og:description" content="作者: 徐蓓 简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器">
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://tencentcloudcontainerteam.github.io/images/15550662807076.jpg">
-<meta property="og:updated_time" content="2020-03-27T04:04:32.259Z">
+<meta property="og:updated_time" content="2020-04-25T15:58:47.792Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="如何使用 Kubernetes VPA 实现资源动态扩展和回收">
 <meta name="twitter:description" content="作者: 徐蓓 简述最近一段时间在研究和设计集群资源混合部署方案，以提高资源使用率。这其中一个重要的功能是资源动态扩展和回收。虽然方案是针对通用型集群管理软件，但由于 Kubernetes 目前是事实标准，所以先使用它来检验理论成果。 资源动态扩展资源动态扩展按照类型分为两种：纵向和横向。纵向指的是对资源的配置进行扩展，比如增加或减少 CPU 个数和内存大小等。横向扩展则是增加资源的数量，比如服务器">
@@ -130,7 +130,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="ck89nwpbw000ho8kbrrufufrs" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/04/30/kubernetes-vpa/" data-id="ck9ft6y8u000ibqot9yrgrvt4" class="article-share-link">Share</a>
       
       
     </footer>
@@ -175,7 +175,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -186,6 +186,10 @@
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
         
           <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
@@ -201,10 +205,6 @@
         
           <li>
             <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
-          </li>
-        
-          <li>
-            <a href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
           </li>
         
       </ul>
