@@ -7,7 +7,7 @@ date: 2020/04/20
 
 ## 概述
 
-之前在 [大规模场景下 Prometheus 的优化手段](../build-cloud-native-large-scale-distributed-monitoring-system-3) 中，我们想尽 "千方百计" 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 "冷数据"，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。
+之前在 [大规模场景下 Prometheus 的优化手段](https://tencentcloudcontainerteam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/) 中，我们想尽 "千方百计" 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 "冷数据"，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。
 
 Thanos (没错，就是灭霸) 可以帮我们简化分布式 Prometheus 的部署与管理，并提供了一些的高级特性：**全局视图**，**长期存储**，**高可用**。下面我们来详细讲解一下。
 
