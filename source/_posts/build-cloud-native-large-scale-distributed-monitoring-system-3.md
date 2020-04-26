@@ -17,8 +17,6 @@ date: 2020/04/20 13:00:00
 
 上一篇 [Thanos 架构详解](https://tencentcloudcontainerteam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/) 我们深入理解了 thanos 的架构设计与实现原理，现在我们来聊聊实战，分享一下如何部署和使用 Thanos。
 
-<!--more-->
-
 ## 部署方式
 
 本文聚焦 Thanos 的云原生部署方式，充分利用 Kubernetes 的资源调度与动态扩容能力。从官方 [这里](https://thanos.io/getting-started.md/#community-thanos-kubernetes-applications) 可以看到，当前 thanos 在 Kubernetes 上部署有以下三种：
