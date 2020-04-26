@@ -24,7 +24,7 @@
 <meta property="og:image" content="https://imroc.io/assets/blog/thanos-compact.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/thanos-arch.jpg">
 <meta property="og:image" content="https://imroc.io/assets/blog/thanos-receiver.png">
-<meta property="og:updated_time" content="2020-04-26T02:26:31.241Z">
+<meta property="og:updated_time" content="2020-04-26T02:32:55.100Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="打造云原生大型分布式监控系统(三): Thanos 部署与实践">
 <meta name="twitter:description" content="作者: 陈鹏 概述之前在 大规模场景下 Prometheus 的优化手段 中，我们想尽 “千方百计” 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 “冷数据”，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。 Thanos (">
@@ -98,7 +98,7 @@
     <div class="article-entry" itemprop="articleBody">
       
         <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>之前在 <a href="../build-cloud-native-large-scale-distributed-monitoring-system-3">大规模场景下 Prometheus 的优化手段</a> 中，我们想尽 “千方百计” 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 “冷数据”，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。</p>
+<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>之前在 <a href="https://tencentcloudcontainerteam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">大规模场景下 Prometheus 的优化手段</a> 中，我们想尽 “千方百计” 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 “冷数据”，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。</p>
 <p>Thanos (没错，就是灭霸) 可以帮我们简化分布式 Prometheus 的部署与管理，并提供了一些的高级特性：<strong>全局视图</strong>，<strong>长期存储</strong>，<strong>高可用</strong>。下面我们来详细讲解一下。</p>
 <h2 id="Thanos-架构"><a href="#Thanos-架构" class="headerlink" title="Thanos 架构"></a>Thanos 架构</h2><p>这是官方给出的架构图：</p>
 <p><img src="https://imroc.io/assets/blog/thanos-arch.jpg" alt=""></p>
@@ -155,7 +155,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ck9gfm37w0004cjod3iojopmt" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ck9gfucsj0004agnrsuzc4x1m" class="article-share-link">Share</a>
       
       
     </footer>

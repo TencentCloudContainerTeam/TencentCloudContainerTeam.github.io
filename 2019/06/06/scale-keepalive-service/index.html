@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者: 陈鹏 在现网运营中，有很多场景为了提高效率，一般都采用建立长连接的方式来请求。我们发现在客户端以长连接请求服务端的场景下，K8S的自动扩容会失效。原因是客户端长连接一直保留在老的Pod容器中，新扩容的Pod没有新的连接过来，导致K8S按照步长扩容第一批Pod之后就停止了扩容操作，而且新扩容的Pod没能承载请求，进而出现服务过载的情况，自动扩容失去了意义。 对长连接扩容失效的问题，我们的解决">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2020-04-26T02:26:31.253Z">
+<meta property="og:updated_time" content="2020-04-26T02:32:55.116Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 最佳实践：解决长连接服务扩容失效">
 <meta name="twitter:description" content="作者: 陈鹏 在现网运营中，有很多场景为了提高效率，一般都采用建立长连接的方式来请求。我们发现在客户端以长连接请求服务端的场景下，K8S的自动扩容会失效。原因是客户端长连接一直保留在老的Pod容器中，新扩容的Pod没有新的连接过来，导致K8S按照步长扩容第一批Pod之后就停止了扩容操作，而且新扩容的Pod没能承载请求，进而出现服务过载的情况，自动扩容失去了意义。 对长连接扩容失效的问题，我们的解决">
@@ -95,7 +95,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck9gfm38m000ocjodi5rpg7s6" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck9gfuctb000oagnrrmw0ibds" class="article-share-link">Share</a>
       
       
     </footer>
