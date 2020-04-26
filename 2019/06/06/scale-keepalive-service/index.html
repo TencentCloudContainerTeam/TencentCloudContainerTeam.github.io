@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者: 陈鹏 在现网运营中，有很多场景为了提高效率，一般都采用建立长连接的方式来请求。我们发现在客户端以长连接请求服务端的场景下，K8S的自动扩容会失效。原因是客户端长连接一直保留在老的Pod容器中，新扩容的Pod没有新的连接过来，导致K8S按照步长扩容第一批Pod之后就停止了扩容操作，而且新扩容的Pod没能承载请求，进而出现服务过载的情况，自动扩容失去了意义。 对长连接扩容失效的问题，我们的解决">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2020-04-25T15:58:47.804Z">
+<meta property="og:updated_time" content="2020-04-26T02:26:31.253Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Kubernetes 最佳实践：解决长连接服务扩容失效">
 <meta name="twitter:description" content="作者: 陈鹏 在现网运营中，有很多场景为了提高效率，一般都采用建立长连接的方式来请求。我们发现在客户端以长连接请求服务端的场景下，K8S的自动扩容会失效。原因是客户端长连接一直保留在老的Pod容器中，新扩容的Pod没有新的连接过来，导致K8S按照步长扩容第一批Pod之后就停止了扩容操作，而且新扩容的Pod没能承载请求，进而出现服务过载的情况，自动扩容失去了意义。 对长连接扩容失效的问题，我们的解决">
@@ -95,7 +95,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck9ft6y8y000mbqotudhcqxiu" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/scale-keepalive-service/" data-id="ck9gfm38m000ocjodi5rpg7s6" class="article-share-link">Share</a>
       
       
     </footer>
@@ -157,19 +157,19 @@
           </li>
         
           <li>
+            <a href="/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/05/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
+          </li>
+        
+          <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
           </li>
         
           <li>
             <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/12/15/no-route-to-host/">Kubernetes 疑难杂症排查分享: 诡异的 No route to host</a>
-          </li>
-        
-          <li>
-            <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
           </li>
         
       </ul>

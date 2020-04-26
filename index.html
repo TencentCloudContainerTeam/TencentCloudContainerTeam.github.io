@@ -135,7 +135,187 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ck9ft6y8j000bbqotzvpw9yc3" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ck9gfm38b000dcjodk5w2pvfp" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
+    <article id="post-build-cloud-native-large-scale-distributed-monitoring-system-3" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/" class="article-date">
+  <time datetime="2020-04-19T16:00:00.000Z" itemprop="datePublished">2020-04-20</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>之前在 <a href="../build-cloud-native-large-scale-distributed-monitoring-system-3">大规模场景下 Prometheus 的优化手段</a> 中，我们想尽 “千方百计” 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 “冷数据”，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。</p>
+<p>Thanos (没错，就是灭霸) 可以帮我们简化分布式 Prometheus 的部署与管理，并提供了一些的高级特性：<strong>全局视图</strong>，<strong>长期存储</strong>，<strong>高可用</strong>。下面我们来详细讲解一下。</p>
+<h2 id="Thanos-架构"><a href="#Thanos-架构" class="headerlink" title="Thanos 架构"></a>Thanos 架构</h2><p>这是官方给出的架构图：</p>
+<p><img src="https://imroc.io/assets/blog/thanos-arch.jpg" alt=""></p>
+<p>这张图中包含了 Thanos 的几个核心组件，但并不包括所有组件，为了便于理解，我们先不细讲，简单介绍下图中这几个组件的作用：</p>
+<ul>
+<li>Thanos Query: 实现了 Prometheus API，将来自下游组件提供的数据进行聚合最终返回给查询数据的 client (如 grafana)，类似数据库中间件。</li>
+<li>Thanos Sidecar: 连接 Prometheus，将其数据提供给 Thanos Query 查询，并且/或者将其上传到对象存储，以供长期存储。</li>
+<li>Thanos Store Gateway: 将对象存储的数据暴露给 Thanos Query 去查询。</li>
+<li>Thanos Ruler: 对监控数据进行评估和告警，还可以计算出新的监控数据，将这些新数据提供给 Thanos Query 查询并且/或者上传到对象存储，以供长期存储。</li>
+<li>Thanos Compact: 将对象存储中的数据进行压缩和降低采样率，加速大时间区间监控数据查询的速度。</li>
+</ul>
+<h2 id="架构设计剖析"><a href="#架构设计剖析" class="headerlink" title="架构设计剖析"></a>架构设计剖析</h2><p>如何理解 Thanos 的架构设计的？我们可以自己先 YY 一下，要是自己来设计一个分布式 Prometheus 管理应用，会怎么做？</p>
+<h3 id="Query-与-Sidecar"><a href="#Query-与-Sidecar" class="headerlink" title="Query 与 Sidecar"></a>Query 与 Sidecar</h3><p>首先，监控数据的查询肯定不能直接查 Prometheus 了，因为会存在许多个 Prometheus 实例，每个 Prometheus 实例只能感知它自己所采集的数据。我们可以比较容易联想到数据库中间件，每个数据库都只存了一部分数据，中间件能感知到所有数据库，数据查询都经过数据库中间件来查，这个中间件收到查询请求再去查下游各个数据库中的数据，最后将这些数据聚合汇总返回给查询的客户端，这样就实现了将分布式存储的数据集中查询。</p>
+<p>实际上，Thanos 也是使用了类似的设计思想，Thanos Query 就是这个 “中间件” 的关键入口。它实现了 Prometheus 的 HTTP API，能够 “看懂” PromQL。这样，查询 Prometheus 监控数据的 client 就不直接查询 Prometheus 本身了，而是去查询 Thanos Query，Thanos Query 再去下游多个存储了数据的地方查数据，最后将这些数据聚合去重后返回给 client，也就实现了分布式 Prometheus 的数据查询。</p>
+<p>那么 Thanos Query 又如何去查下游分散的数据呢？Thanos 为此抽象了一套叫 Store API 的内部 gRPC 接口，其它一些组件通过这个接口来暴露数据给 Thanos Query，它自身也就可以做到完全无状态部署，实现高可用与动态扩展。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-querier.svg" alt=""></p>
+<p>这些分散的数据可能来自哪些地方呢？首先，Prometheus 会将采集的数据存到本机磁盘上，如果我们直接用这些分散在各个磁盘上的数据，可以给每个 Prometheus 附带部署一个 Sidecar，这个 Sidecar 实现 Thanos Store API，当 Thanos Query 对其发起查询时，Sidecar 就读取跟它绑定部署的 Prometheus 实例上的监控数据返回给 Thanos Query。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-sidecar.png" alt=""></p>
+<p>由于 Thanos Query 可以对数据进行聚合与去重，所以可以很轻松实现高可用：相同的 Prometheus 部署多个副本(都附带 Sidecar)，然后 Thanos Query 去所有 Sidecar 查数据，即便有一个 Prometheus 实例挂掉过一段时间，数据聚合与去重后仍然能得到完整数据。</p>
+<p>这种高可用做法还弥补了我们上篇文章中用负载均衡去实现 Prometheus 高可用方法的缺陷：如果其中一个 Prometheus 实例挂了一段时间然后又恢复了，它的数据就不完整，当负载均衡转发到它上面去查数据时，返回的结果就可能会有部分缺失。</p>
+<p>不过因为磁盘空间有限，所以 Prometheus 存储监控数据的能力也是有限的，通常会给 Prometheus 设置一个数据过期时间 (默认15天) 或者最大数据量大小，不断清理旧数据以保证磁盘不被撑爆。因此，我们无法看到时间比较久远的监控数据，有时候这也给我们的问题排查和数据统计造成一些困难。</p>
+<p>对于需要长期存储的数据，并且使用频率不那么高，最理想的方式是存进对象存储，各大云厂商都有对象存储服务，特点是不限制容量，价格非常便宜。</p>
+<p>Thanos 有几个组件都支持将数据上传到各种对象存储以供长期保存 (Prometheus TSDB 数据格式)，比如我们刚刚说的 Sidecar:</p>
+<p><img src="https://imroc.io/assets/blog/thanos-sidecar-with-objectstore.png" alt=""></p>
+<h3 id="Store-Gateway"><a href="#Store-Gateway" class="headerlink" title="Store Gateway"></a>Store Gateway</h3><p>那么这些被上传到了对象存储里的监控数据该如何查询呢？理论上 Thanos Query 也可以直接去对象存储查，但会让 Thanos Query 的逻辑变的很重。我们刚才也看到了，Thanos 抽象出了 Store API，只要实现了该接口的组件都可以作为 Thanos Query 查询的数据源，Thanos Store Gateway 这个组件也实现了 Store API，向 Thanos Query 暴露对象存储的数据。Thanos Store Gateway 内部还做了一些加速数据获取的优化逻辑，一是缓存了 TSDB 索引，二是优化了对象存储的请求 (用尽可能少的请求量拿到所有需要的数据)。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-store-gateway.png" alt=""></p>
+<p>这样就实现了监控数据的长期储存，由于对象存储容量无限，所以理论上我们可以存任意时长的数据，监控历史数据也就变得可追溯查询，便于问题排查与统计分析。</p>
+<h3 id="Ruler"><a href="#Ruler" class="headerlink" title="Ruler"></a>Ruler</h3><p>有一个问题，Prometheus 不仅仅只支持将采集的数据进行存储和查询的功能，还可以配置一些 rules:</p>
+<ol>
+<li>根据配置不断计算出新指标数据并存储，后续查询时直接使用计算好的新指标，这样可以减轻查询时的计算压力，加快查询速度。</li>
+<li>不断计算和评估是否达到告警阀值，当达到阀值时就通知 AlertManager 来触发告警。</li>
+</ol>
+<p>由于我们将 Prometheus 进行分布式部署，每个 Prometheus 实例本地并没有完整数据，有些有关联的数据可能存在多个 Prometheus 实例中，单机 Prometheus 看不到数据的全局视图，这种情况我们就不能依赖 Prometheus 来做这些工作，Thanos Ruler 应运而生，它通过查询 Thanos Query 获取全局数据，然后根据 rules 配置计算新指标并存储，同时也通过 Store API 将数据暴露给 Thanos Query，同样还可以将数据上传到对象存储以供长期保存 (这里上传到对象存储中的数据一样也是通过 Thanos Store Gateway 暴露给 Thanos Query)。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-ruler.png" alt=""></p>
+<p>看起来 Thanos Query 跟 Thanos Ruler 之间会相互查询，不过这个不冲突，Thanos Ruler 为 Thanos Query 提供计算出的新指标数据，而 Thanos Query 为 Thanos Ruler 提供计算新指标所需要的全局原始指标数据。</p>
+<p>至此，Thanos 的核心能力基本实现了，完全兼容 Prometheus 的情况下提供数据查询的全局视图，高可用以及数据的长期保存。</p>
+<p>看下还可以怎么进一步做下优化呢？</p>
+<h3 id="Compact"><a href="#Compact" class="headerlink" title="Compact"></a>Compact</h3><p>由于我们有数据长期存储的能力，也就可以实现查询较大时间范围的监控数据，当时间范围很大时，查询的数据量也会很大，这会导致查询速度非常慢。通常在查看较大时间范围的监控数据时，我们并不需要那么详细的数据，只需要看到大致就行。Thanos Compact 这个组件应运而生，它读取对象存储的数据，对其进行压缩以及降采样再上传到对象存储，这样在查询大时间范围数据时就可以只读取压缩和降采样后的数据，极大地减少了查询的数据量，从而加速查询。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-compact.png" alt=""></p>
+<h3 id="再看架构图"><a href="#再看架构图" class="headerlink" title="再看架构图"></a>再看架构图</h3><p>上面我们剖析了官方架构图中各个组件的设计，现在再来回味一下这张图:</p>
+<p><img src="https://imroc.io/assets/blog/thanos-arch.jpg" alt=""></p>
+<p>理解是否更加深刻了？</p>
+<p>另外还有 Thanos Bucket 和 Thanos Checker 两个辅助性的工具组件没画出来，它们不是核心组件，这里也就不再赘述。</p>
+<h2 id="Sidecar-模式与-Receiver-模式"><a href="#Sidecar-模式与-Receiver-模式" class="headerlink" title="Sidecar 模式与 Receiver 模式"></a>Sidecar 模式与 Receiver 模式</h2><p>前面我们理解了官方的架构图，但其中还缺失一个核心组件 Thanos Receiver，因为它是一个还未完全发布的组件。这是它的设计文档: <a href="https://thanos.io/proposals/201812_thanos-remote-receive.md/" target="_blank" rel="noopener">https://thanos.io/proposals/201812_thanos-remote-receive.md/</a></p>
+<p>这个组件可以完全消除 Sidecar，所以 Thanos 实际有两种架构图，只是因为没有完全发布，官方的架构图只给的 Sidecar 模式。</p>
+<p>Receiver 是做什么的呢？为什么需要 Receiver？它跟 Sidecar 有什么区别？</p>
+<p>它们都可以将数据上传到对象存储以供长期保存，区别在于最新数据的存储。</p>
+<p>由于数据上传不可能实时，Sidecar 模式将最新的监控数据存到 Prometheus 本机，Query 通过调所有 Sidecar 的 Store API 来获取最新数据，这就成一个问题：如果 Sidecar 数量非常多或者 Sidecar 跟 Query 离的比较远，每次查询 Query 都调所有 Sidecar 会消耗很多资源，并且速度很慢，而我们查看监控大多数情况都是看的最新数据。</p>
+<p>为了解决这个问题，Thanos Receiver 组件被提出，它适配了 Prometheus 的 remote write API，也就是所有 Prometheus 实例可以实时将数据 push 到 Thanos Receiver，最新数据也得以集中起来，然后 Thanos Query 也不用去所有 Sidecar 查最新数据了，直接查 Thanos Receiver 即可。另外，Thanos Receiver 也将数据上传到对象存储以供长期保存，当然，对象存储中的数据同样由 Thanos Store Gateway 暴露给 Thanos Query。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-receiver.png" alt=""></p>
+<p>有同学可能会问：如果规模很大，Receiver 压力会不会很大，成为性能瓶颈？当然设计这个组件时肯定会考虑这个问题，Receiver 实现了一致性哈希，支持集群部署，所以即使规模很大也不会成为性能瓶颈。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>本文详细讲解了 Thanos 的架构设计，各个组件的作用以及为什么要这么设计。如果仔细看完，我相信你已经 get 到了 Thanos 的精髓，不过我们还没开始讲如何部署与实践，实际上在腾讯云容器服务的多个产品的内部监控已经在使用 Thanos 了，比如 <a href="https://cloud.tencent.com/product/tke" target="_blank" rel="noopener">TKE</a> (公有云 k8s)、<a href="https://github.com/tkestack/tke" target="_blank" rel="noopener">TKEStack</a> (私有云 k8s)、<a href="https://console.cloud.tencent.com/tke2/ecluster" target="_blank" rel="noopener">EKS</a> (Serverless k8s)。 下一篇我们将介绍 Thanos 的部署与最佳实践，敬请期待。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ck9gfm37w0004cjod3iojopmt" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
+    <article id="post-build-cloud-native-large-scale-distributed-monitoring-system-2" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/04/05/build-cloud-native-large-scale-distributed-monitoring-system-2/" class="article-date">
+  <time datetime="2020-04-05T16:00:00.000Z" itemprop="datePublished">2020-04-06</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/04/05/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>之前在 <a href="../build-cloud-native-large-scale-distributed-monitoring-system-1">大规模场景下 Prometheus 的优化手段</a> 中，我们想尽 “千方百计” 才好不容易把 Prometheus 优化到适配大规模场景，部署和后期维护麻烦且复杂不说，还有很多不完美的地方，并且还无法满足一些更高级的诉求，比如查看时间久远的监控数据，对于一些时间久远不常用的 “冷数据”，最理想的方式就是存到廉价的对象存储中，等需要查询的时候能够自动加载出来。</p>
+<p>Thanos (没错，就是灭霸) 可以帮我们简化分布式 Prometheus 的部署与管理，并提供了一些的高级特性：<strong>全局视图</strong>，<strong>长期存储</strong>，<strong>高可用</strong>。下面我们来详细讲解一下。</p>
+<h2 id="Thanos-架构"><a href="#Thanos-架构" class="headerlink" title="Thanos 架构"></a>Thanos 架构</h2><p>这是官方给出的架构图：</p>
+<p><img src="https://imroc.io/assets/blog/thanos-arch.jpg" alt=""></p>
+<p>这张图中包含了 Thanos 的几个核心组件，但并不包括所有组件，为了便于理解，我们先不细讲，简单介绍下图中这几个组件的作用：</p>
+<ul>
+<li>Thanos Query: 实现了 Prometheus API，将来自下游组件提供的数据进行聚合最终返回给查询数据的 client (如 grafana)，类似数据库中间件。</li>
+<li>Thanos Sidecar: 连接 Prometheus，将其数据提供给 Thanos Query 查询，并且/或者将其上传到对象存储，以供长期存储。</li>
+<li>Thanos Store Gateway: 将对象存储的数据暴露给 Thanos Query 去查询。</li>
+<li>Thanos Ruler: 对监控数据进行评估和告警，还可以计算出新的监控数据，将这些新数据提供给 Thanos Query 查询并且/或者上传到对象存储，以供长期存储。</li>
+<li>Thanos Compact: 将对象存储中的数据进行压缩和降低采样率，加速大时间区间监控数据查询的速度。</li>
+</ul>
+<h2 id="架构设计剖析"><a href="#架构设计剖析" class="headerlink" title="架构设计剖析"></a>架构设计剖析</h2><p>如何理解 Thanos 的架构设计的？我们可以自己先 YY 一下，要是自己来设计一个分布式 Prometheus 管理应用，会怎么做？</p>
+<h3 id="Query-与-Sidecar"><a href="#Query-与-Sidecar" class="headerlink" title="Query 与 Sidecar"></a>Query 与 Sidecar</h3><p>首先，监控数据的查询肯定不能直接查 Prometheus 了，因为会存在许多个 Prometheus 实例，每个 Prometheus 实例只能感知它自己所采集的数据。我们可以比较容易联想到数据库中间件，每个数据库都只存了一部分数据，中间件能感知到所有数据库，数据查询都经过数据库中间件来查，这个中间件收到查询请求再去查下游各个数据库中的数据，最后将这些数据聚合汇总返回给查询的客户端，这样就实现了将分布式存储的数据集中查询。</p>
+<p>实际上，Thanos 也是使用了类似的设计思想，Thanos Query 就是这个 “中间件” 的关键入口。它实现了 Prometheus 的 HTTP API，能够 “看懂” PromQL。这样，查询 Prometheus 监控数据的 client 就不直接查询 Prometheus 本身了，而是去查询 Thanos Query，Thanos Query 再去下游多个存储了数据的地方查数据，最后将这些数据聚合去重后返回给 client，也就实现了分布式 Prometheus 的数据查询。</p>
+<p>那么 Thanos Query 又如何去查下游分散的数据呢？Thanos 为此抽象了一套叫 Store API 的内部 gRPC 接口，其它一些组件通过这个接口来暴露数据给 Thanos Query，它自身也就可以做到完全无状态部署，实现高可用与动态扩展。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-querier.svg" alt=""></p>
+<p>这些分散的数据可能来自哪些地方呢？首先，Prometheus 会将采集的数据存到本机磁盘上，如果我们直接用这些分散在各个磁盘上的数据，可以给每个 Prometheus 附带部署一个 Sidecar，这个 Sidecar 实现 Thanos Store API，当 Thanos Query 对其发起查询时，Sidecar 就读取跟它绑定部署的 Prometheus 实例上的监控数据返回给 Thanos Query。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-sidecar.png" alt=""></p>
+<p>由于 Thanos Query 可以对数据进行聚合与去重，所以可以很轻松实现高可用：相同的 Prometheus 部署多个副本(都附带 Sidecar)，然后 Thanos Query 去所有 Sidecar 查数据，即便有一个 Prometheus 实例挂掉过一段时间，数据聚合与去重后仍然能得到完整数据。</p>
+<p>这种高可用做法还弥补了我们上篇文章中用负载均衡去实现 Prometheus 高可用方法的缺陷：如果其中一个 Prometheus 实例挂了一段时间然后又恢复了，它的数据就不完整，当负载均衡转发到它上面去查数据时，返回的结果就可能会有部分缺失。</p>
+<p>不过因为磁盘空间有限，所以 Prometheus 存储监控数据的能力也是有限的，通常会给 Prometheus 设置一个数据过期时间 (默认15天) 或者最大数据量大小，不断清理旧数据以保证磁盘不被撑爆。因此，我们无法看到时间比较久远的监控数据，有时候这也给我们的问题排查和数据统计造成一些困难。</p>
+<p>对于需要长期存储的数据，并且使用频率不那么高，最理想的方式是存进对象存储，各大云厂商都有对象存储服务，特点是不限制容量，价格非常便宜。</p>
+<p>Thanos 有几个组件都支持将数据上传到各种对象存储以供长期保存 (Prometheus TSDB 数据格式)，比如我们刚刚说的 Sidecar:</p>
+<p><img src="https://imroc.io/assets/blog/thanos-sidecar-with-objectstore.png" alt=""></p>
+<h3 id="Store-Gateway"><a href="#Store-Gateway" class="headerlink" title="Store Gateway"></a>Store Gateway</h3><p>那么这些被上传到了对象存储里的监控数据该如何查询呢？理论上 Thanos Query 也可以直接去对象存储查，但会让 Thanos Query 的逻辑变的很重。我们刚才也看到了，Thanos 抽象出了 Store API，只要实现了该接口的组件都可以作为 Thanos Query 查询的数据源，Thanos Store Gateway 这个组件也实现了 Store API，向 Thanos Query 暴露对象存储的数据。Thanos Store Gateway 内部还做了一些加速数据获取的优化逻辑，一是缓存了 TSDB 索引，二是优化了对象存储的请求 (用尽可能少的请求量拿到所有需要的数据)。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-store-gateway.png" alt=""></p>
+<p>这样就实现了监控数据的长期储存，由于对象存储容量无限，所以理论上我们可以存任意时长的数据，监控历史数据也就变得可追溯查询，便于问题排查与统计分析。</p>
+<h3 id="Ruler"><a href="#Ruler" class="headerlink" title="Ruler"></a>Ruler</h3><p>有一个问题，Prometheus 不仅仅只支持将采集的数据进行存储和查询的功能，还可以配置一些 rules:</p>
+<ol>
+<li>根据配置不断计算出新指标数据并存储，后续查询时直接使用计算好的新指标，这样可以减轻查询时的计算压力，加快查询速度。</li>
+<li>不断计算和评估是否达到告警阀值，当达到阀值时就通知 AlertManager 来触发告警。</li>
+</ol>
+<p>由于我们将 Prometheus 进行分布式部署，每个 Prometheus 实例本地并没有完整数据，有些有关联的数据可能存在多个 Prometheus 实例中，单机 Prometheus 看不到数据的全局视图，这种情况我们就不能依赖 Prometheus 来做这些工作，Thanos Ruler 应运而生，它通过查询 Thanos Query 获取全局数据，然后根据 rules 配置计算新指标并存储，同时也通过 Store API 将数据暴露给 Thanos Query，同样还可以将数据上传到对象存储以供长期保存 (这里上传到对象存储中的数据一样也是通过 Thanos Store Gateway 暴露给 Thanos Query)。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-ruler.png" alt=""></p>
+<p>看起来 Thanos Query 跟 Thanos Ruler 之间会相互查询，不过这个不冲突，Thanos Ruler 为 Thanos Query 提供计算出的新指标数据，而 Thanos Query 为 Thanos Ruler 提供计算新指标所需要的全局原始指标数据。</p>
+<p>至此，Thanos 的核心能力基本实现了，完全兼容 Prometheus 的情况下提供数据查询的全局视图，高可用以及数据的长期保存。</p>
+<p>看下还可以怎么进一步做下优化呢？</p>
+<h3 id="Compact"><a href="#Compact" class="headerlink" title="Compact"></a>Compact</h3><p>由于我们有数据长期存储的能力，也就可以实现查询较大时间范围的监控数据，当时间范围很大时，查询的数据量也会很大，这会导致查询速度非常慢。通常在查看较大时间范围的监控数据时，我们并不需要那么详细的数据，只需要看到大致就行。Thanos Compact 这个组件应运而生，它读取对象存储的数据，对其进行压缩以及降采样再上传到对象存储，这样在查询大时间范围数据时就可以只读取压缩和降采样后的数据，极大地减少了查询的数据量，从而加速查询。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-compact.png" alt=""></p>
+<h3 id="再看架构图"><a href="#再看架构图" class="headerlink" title="再看架构图"></a>再看架构图</h3><p>上面我们剖析了官方架构图中各个组件的设计，现在再来回味一下这张图:</p>
+<p><img src="https://imroc.io/assets/blog/thanos-arch.jpg" alt=""></p>
+<p>理解是否更加深刻了？</p>
+<p>另外还有 Thanos Bucket 和 Thanos Checker 两个辅助性的工具组件没画出来，它们不是核心组件，这里也就不再赘述。</p>
+<h2 id="Sidecar-模式与-Receiver-模式"><a href="#Sidecar-模式与-Receiver-模式" class="headerlink" title="Sidecar 模式与 Receiver 模式"></a>Sidecar 模式与 Receiver 模式</h2><p>前面我们理解了官方的架构图，但其中还缺失一个核心组件 Thanos Receiver，因为它是一个还未完全发布的组件。这是它的设计文档: <a href="https://thanos.io/proposals/201812_thanos-remote-receive.md/" target="_blank" rel="noopener">https://thanos.io/proposals/201812_thanos-remote-receive.md/</a></p>
+<p>这个组件可以完全消除 Sidecar，所以 Thanos 实际有两种架构图，只是因为没有完全发布，官方的架构图只给的 Sidecar 模式。</p>
+<p>Receiver 是做什么的呢？为什么需要 Receiver？它跟 Sidecar 有什么区别？</p>
+<p>它们都可以将数据上传到对象存储以供长期保存，区别在于最新数据的存储。</p>
+<p>由于数据上传不可能实时，Sidecar 模式将最新的监控数据存到 Prometheus 本机，Query 通过调所有 Sidecar 的 Store API 来获取最新数据，这就成一个问题：如果 Sidecar 数量非常多或者 Sidecar 跟 Query 离的比较远，每次查询 Query 都调所有 Sidecar 会消耗很多资源，并且速度很慢，而我们查看监控大多数情况都是看的最新数据。</p>
+<p>为了解决这个问题，Thanos Receiver 组件被提出，它适配了 Prometheus 的 remote write API，也就是所有 Prometheus 实例可以实时将数据 push 到 Thanos Receiver，最新数据也得以集中起来，然后 Thanos Query 也不用去所有 Sidecar 查最新数据了，直接查 Thanos Receiver 即可。另外，Thanos Receiver 也将数据上传到对象存储以供长期保存，当然，对象存储中的数据同样由 Thanos Store Gateway 暴露给 Thanos Query。</p>
+<p><img src="https://imroc.io/assets/blog/thanos-receiver.png" alt=""></p>
+<p>有同学可能会问：如果规模很大，Receiver 压力会不会很大，成为性能瓶颈？当然设计这个组件时肯定会考虑这个问题，Receiver 实现了一致性哈希，支持集群部署，所以即使规模很大也不会成为性能瓶颈。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>本文详细讲解了 Thanos 的架构设计，各个组件的作用以及为什么要这么设计。如果仔细看完，我相信你已经 get 到了 Thanos 的精髓，不过我们还没开始讲如何部署与实践，实际上在腾讯云容器服务的多个产品的内部监控已经在使用 Thanos 了，比如 <a href="https://cloud.tencent.com/product/tke" target="_blank" rel="noopener">TKE</a> (公有云 k8s)、<a href="https://github.com/tkestack/tke" target="_blank" rel="noopener">TKEStack</a> (私有云 k8s)、<a href="https://console.cloud.tencent.com/tke2/ecluster" target="_blank" rel="noopener">EKS</a> (Serverless k8s)。 下一篇我们将介绍 Thanos 的部署与最佳实践，敬请期待。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/05/build-cloud-native-large-scale-distributed-monitoring-system-2/" data-id="ck9gfm37u0003cjodi3uhy9di" class="article-share-link">Share</a>
       
       
     </footer>
@@ -208,7 +388,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck9ft6y830002bqotn9asg9z3" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ck9gfm37s0002cjodx3y3nzvm" class="article-share-link">Share</a>
       
       
     </footer>
@@ -376,7 +556,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ck9ft6y8t000hbqotkost5821" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ck9gfm38h000jcjodhapss1fe" class="article-share-link">Share</a>
       
       
     </footer>
@@ -454,7 +634,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck9ft6y8w000kbqoty3susshz" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ck9gfm38k000mcjod2gz9kq5i" class="article-share-link">Share</a>
       
       
     </footer>
@@ -557,7 +737,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck9ft6y8z000nbqot13emdqdx" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ck9gfm38n000pcjodxi3v1pfh" class="article-share-link">Share</a>
       
       
     </footer>
@@ -828,7 +1008,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck9ft6y91000pbqotjy9k15ze" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ck9gfm38s000rcjodxfxu6uu8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -879,7 +1059,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck9ft6y8x000lbqot4i7drm0d" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ck9gfm38l000ncjodf3jppjw3" class="article-share-link">Share</a>
       
       
     </footer>
@@ -931,176 +1111,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck9ft6y8v000jbqotnp0me58i" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-kubernetes-best-practice-handle-disk-full" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/06/08/kubernetes-best-practice-handle-disk-full/" class="article-date">
-  <time datetime="2019-06-08T14:07:00.000Z" itemprop="datePublished">2019-06-08</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/06/08/kubernetes-best-practice-handle-disk-full/">kubernetes 最佳实践：处理容器数据磁盘被写满</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<p>容器数据磁盘被写满造成的危害:</p>
-<ul>
-<li>不能创建 Pod (一直 ContainerCreating)</li>
-<li>不能删除 Pod (一直 Terminating)</li>
-<li>无法 exec 到容器</li>
-</ul>
-<p>判断是否被写满:</p>
-<p>容器数据目录大多会单独挂数据盘，路径一般是 <code>/var/lib/docker</code>，也可能是 <code>/data/docker</code> 或 <code>/opt/docker</code>，取决于节点被添加时的配置：</p>
-<p><img src="https://imroc.io/assets/blog/tke-select-data-disk.png" alt=""></p>
-<p>可通过 <code>docker info</code> 确定：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ docker info</span><br><span class="line">...</span><br><span class="line">Docker Root Dir: /var/lib/docker</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
-<p>如果没有单独挂数据盘，则会使用系统盘存储。判断是否被写满：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ df</span><br><span class="line">Filesystem     1K-blocks     Used Available Use% Mounted on</span><br><span class="line">...</span><br><span class="line">/dev/vda1       51474044  4619112  44233548  10% /</span><br><span class="line">...</span><br><span class="line">/dev/vdb        20511356 20511356         0 100% /var/lib/docker</span><br></pre></td></tr></table></figure>
-<h2 id="解决方法"><a href="#解决方法" class="headerlink" title="解决方法"></a>解决方法</h2><h3 id="先恢复业务，清理磁盘空间"><a href="#先恢复业务，清理磁盘空间" class="headerlink" title="先恢复业务，清理磁盘空间"></a>先恢复业务，清理磁盘空间</h3><p>重启 dockerd (清理容器日志输出和可写层文件)</p>
-<ul>
-<li>重启前需要稍微腾出一点空间，不然重启 docker 会失败，可以手动删除一些docker的log文件或可写层文件，通常删除log:</li>
-</ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/containers</span><br><span class="line">$ du -sh * <span class="comment"># 找到比较大的目录</span></span><br><span class="line">$ <span class="built_in">cd</span> dda02c9a7491fa797ab730c1568ba06cba74cecd4e4a82e9d90d00fa11de743c</span><br><span class="line">$ cat /dev/null &gt; dda02c9a7491fa797ab730c1568ba06cba74cecd4e4a82e9d90d00fa11de743c-json.log.9 <span class="comment"># 删除log文件</span></span><br></pre></td></tr></table></figure>
-<p><strong>注意:</strong> 使用 <code>cat /dev/null &gt;</code> 方式删除而不用 <code>rm</code>，因为用 rm 删除的文件，docker 进程可能不会释放文件，空间也就不会释放；log 的后缀数字越大表示越久远，先删除旧日志。</p>
-<ul>
-<li>将该 node 标记不可调度，并将其已有的 pod 驱逐到其它节点，这样重启dockerd就会让该节点的pod对应的容器删掉，容器相关的日志(标准输出)与容器内产生的数据文件(可写层)也会被清理：</li>
-</ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl drain 10.179.80.31</span><br></pre></td></tr></table></figure>
-<ul>
-<li>重启 dockerd:</li>
-</ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">systemctl restart dockerd</span><br></pre></td></tr></table></figure>
-<ul>
-<li>取消不可调度的标记:</li>
-</ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl uncordon 10.179.80.31</span><br></pre></td></tr></table></figure>
-<h3 id="定位根因，彻底解决"><a href="#定位根因，彻底解决" class="headerlink" title="定位根因，彻底解决"></a>定位根因，彻底解决</h3><p>问题定位方法见附录，这里列举根因对应的解决方法：</p>
-<ul>
-<li>日志输出量大导致磁盘写满:<ul>
-<li>减少日志输出</li>
-<li>增大磁盘空间</li>
-<li>减小单机可调度的pod数量</li>
-</ul>
-</li>
-<li>可写层量大导致磁盘写满: 优化程序逻辑，不写文件到容器内或控制写入文件的大小与数量</li>
-<li>镜像占用空间大导致磁盘写满:<ul>
-<li>增大磁盘空间</li>
-<li>删除不需要的镜像</li>
-</ul>
-</li>
-</ul>
-<h2 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h2><h3 id="查看docker的磁盘空间占用情况"><a href="#查看docker的磁盘空间占用情况" class="headerlink" title="查看docker的磁盘空间占用情况"></a>查看docker的磁盘空间占用情况</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ docker system df -v</span><br></pre></td></tr></table></figure>
-<p><img src="https://imroc.io/assets/blog/docker-system-df.png" alt=""></p>
-<h3 id="定位容器写满磁盘的原因"><a href="#定位容器写满磁盘的原因" class="headerlink" title="定位容器写满磁盘的原因"></a>定位容器写满磁盘的原因</h3><p>进入容器数据目录(假设是 <code>/var/lib/docker</code>，并且存储驱动是 aufs):</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="https://imroc.io/assets/blog/docker-sh-dockerlib.png" alt=""></p>
-<ul>
-<li><code>containers</code> 目录: 体积大说明日志输出量大</li>
-<li><code>aufs</code> 目录</li>
-</ul>
-<p><img src="https://imroc.io/assets/blog/docker-sh-aufs.png" alt=""></p>
-<ul>
-<li><code>diff</code> 子目录: 容器可写层，体积大说明可写层数据量大(程序在容器里写入文件)</li>
-<li><code>mnt</code> 子目录: 联合挂载点，内容为容器里看到的内容，即包含镜像本身内容以及可写层内容</li>
-</ul>
-<h3 id="找出日志输出量大的-pod"><a href="#找出日志输出量大的-pod" class="headerlink" title="找出日志输出量大的 pod"></a>找出日志输出量大的 pod</h3><p>TKE 的 pod 中每个容器输出的日志最大存储 1G (日志轮转，最大10个文件，每个文件最大100m，可用 <code>docker inpect</code> 查看):</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">$ docker inspect fef835ebfc88</span><br><span class="line">[</span><br><span class="line">    &#123;</span><br><span class="line">         ...</span><br><span class="line">        <span class="string">"HostConfig"</span>: &#123;</span><br><span class="line">            ...</span><br><span class="line">            <span class="string">"LogConfig"</span>: &#123;</span><br><span class="line">                <span class="string">"Type"</span>: <span class="string">"json-file"</span>,</span><br><span class="line">                <span class="string">"Config"</span>: &#123;</span><br><span class="line">                    <span class="string">"max-file"</span>: <span class="string">"10"</span>,</span><br><span class="line">                    <span class="string">"max-size"</span>: <span class="string">"100m"</span></span><br><span class="line">                &#125;</span><br><span class="line">            &#125;,</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
-<p>查看哪些容器日志输出量大：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/containers</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="https://imroc.io/assets/blog/du-sh-containers.png" alt=""></p>
-<p>目录名即为容器id，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
-<h3 id="找出可写层数据量大的-pod"><a href="#找出可写层数据量大的-pod" class="headerlink" title="找出可写层数据量大的 pod"></a>找出可写层数据量大的 pod</h3><p>可写层的数据主要是容器内程序自身写入的，无法控制大小，可写层越大说明容器写入的文件越多或越大，通常是容器内程序将log写到文件里了，查看一下哪个容器的可写层数据量大：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">cd</span> /var/lib/docker/aufs/diff</span><br><span class="line">$ du -sh *</span><br></pre></td></tr></table></figure>
-<p><img src="https://imroc.io/assets/blog/du-sh-diff.png" alt=""><br>通过可写层目录(<code>diff</code>的子目录)反查容器id:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ grep 834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be /var/lib/docker/image/aufs/layerdb/mounts/*/mount-id</span><br><span class="line">/var/lib/docker/image/aufs/layerdb/mounts/eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9/mount-id:834d97500892f56b24c6e63ffd4e520fc29c6c0d809a3472055116f59fb1d2be</span><br></pre></td></tr></table></figure>
-<p><code>mounts</code> 后面一级的id即为容器id: <code>eb76fcd31dfbe5fc949b67e4ad717e002847d15334791715ff7d96bb2c8785f9</code>，使用前几位与 <code>docker ps</code> 结果匹配可找出对应容器，最后就可以推算出是哪些 pod 搞的鬼</p>
-<h3 id="找出体积大的镜像"><a href="#找出体积大的镜像" class="headerlink" title="找出体积大的镜像"></a>找出体积大的镜像</h3><p>看看哪些镜像比较占空间</p>
-<p><img src="https://imroc.io/assets/blog/docker-images.png" alt=""></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/" data-id="ck9ft6y8s000gbqot1zvesie1" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-handle-memory-fragmentation" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/06/06/handle-memory-fragmentation/" class="article-date">
-  <time datetime="2019-06-06T14:01:00.000Z" itemprop="datePublished">2019-06-06</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/06/06/handle-memory-fragmentation/">Kubernetes 最佳实践：处理内存碎片化</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<h2 id="内存碎片化造成的危害"><a href="#内存碎片化造成的危害" class="headerlink" title="内存碎片化造成的危害"></a>内存碎片化造成的危害</h2><p>节点的内存碎片化严重，导致docker运行容器时，无法分到大的内存块，导致start docker失败。最终导致服务更新时，状态一直都是启动中</p>
-<h2 id="判断是否内存碎片化严重"><a href="#判断是否内存碎片化严重" class="headerlink" title="判断是否内存碎片化严重"></a>判断是否内存碎片化严重</h2><p>内核日志显示：</p>
-<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-1.png" alt=""></p>
-<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-2.png" alt=""></p>
-<p>进一步查看的系统内存(cache多可能是io导致的，为了提高io效率留下的缓存，这部分内存实际是可以释放的)：</p>
-<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-3.png" alt=""></p>
-<p>查看slab (后面的0多表示伙伴系统没有大块内存了)：</p>
-<p><img src="https://imroc.io/assets/blog/handle-memory-fragmentation-4.png" alt=""></p>
-<h2 id="解决方法"><a href="#解决方法" class="headerlink" title="解决方法"></a>解决方法</h2><ul>
-<li><p>周期性地或者在发现大块内存不足时，先进行drop_cache操作:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 3 &gt; /proc/sys/vm/drop_caches</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>必要时候进行内存整理，开销会比较大，会造成业务卡住一段时间(慎用):</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 1 &gt; /proc/sys/vm/compact_memory</span><br></pre></td></tr></table></figure>
-</li>
-</ul>
-<h2 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h2><p>相关链接：</p>
-<ul>
-<li><a href="https://www.lijiaocn.com/%E9%97%AE%E9%A2%98/2017/11/13/problem-unable-create-nf-conn.html" target="_blank" rel="noopener">https://www.lijiaocn.com/%E9%97%AE%E9%A2%98/2017/11/13/problem-unable-create-nf-conn.html</a></li>
-<li><a href="https://blog.csdn.net/wqhlmark64/article/details/79143975" target="_blank" rel="noopener">https://blog.csdn.net/wqhlmark64/article/details/79143975</a></li>
-<li><a href="https://huataihuang.gitbooks.io/cloud-atlas/content/os/linux/kernel/memory/drop_caches_and_compact_memory.html" target="_blank" rel="noopener">https://huataihuang.gitbooks.io/cloud-atlas/content/os/linux/kernel/memory/drop_caches_and_compact_memory.html</a></li>
-</ul>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/06/handle-memory-fragmentation/" data-id="ck9ft6y8b0006bqot8gdpx14g" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ck9gfm38j000lcjodtai2tqrp" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1150,19 +1161,19 @@
           </li>
         
           <li>
+            <a href="/2020/04/19/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/05/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
+          </li>
+        
+          <li>
             <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
           </li>
         
           <li>
             <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
-          </li>
-        
-          <li>
-            <a href="/2019/12/15/no-route-to-host/">Kubernetes 疑难杂症排查分享: 诡异的 No route to host</a>
-          </li>
-        
-          <li>
-            <a href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
           </li>
         
       </ul>
