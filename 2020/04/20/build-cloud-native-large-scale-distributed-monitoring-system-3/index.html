@@ -17,7 +17,7 @@
 <meta property="og:locale" content="zh-cn">
 <meta property="og:image" content="https://imroc.io/assets/blog/thanos-sidecar.png">
 <meta property="og:image" content="https://imroc.io/assets/blog/thanos-receiver-without-objectstore.png">
-<meta property="og:updated_time" content="2020-04-26T02:37:14.380Z">
+<meta property="og:updated_time" content="2020-04-26T02:48:14.589Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="打造云原生大型分布式监控系统(三): Thanos 部署与实践">
 <meta name="twitter:description" content="作者: 陈鹏 视频附上本系列完整视频  打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段 https://www.bilibili.com/video/BV17C4y1x7HE 打造云原生大型分布式监控系统(二): Thanos 架构详解 https://www.bilibili.com/video/BV1Vk4y1R7S9 打造云原生大型分布式监控系统(三):">
@@ -98,7 +98,6 @@
 <li>打造云原生大型分布式监控系统(三): Thanos 部署与实践 <a href="https://www.bilibili.com/video/BV16g4y187HD" target="_blank" rel="noopener">https://www.bilibili.com/video/BV16g4y187HD</a></li>
 </ul>
 <h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>上一篇 <a href="https://tencentcloudcontainerteam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">Thanos 架构详解</a> 我们深入理解了 thanos 的架构设计与实现原理，现在我们来聊聊实战，分享一下如何部署和使用 Thanos。</p>
-<a id="more"></a>
 <h2 id="部署方式"><a href="#部署方式" class="headerlink" title="部署方式"></a>部署方式</h2><p>本文聚焦 Thanos 的云原生部署方式，充分利用 Kubernetes 的资源调度与动态扩容能力。从官方 <a href="https://thanos.io/getting-started.md/#community-thanos-kubernetes-applications" target="_blank" rel="noopener">这里</a> 可以看到，当前 thanos 在 Kubernetes 上部署有以下三种：</p>
 <ul>
 <li><a href="https://github.com/coreos/prometheus-operator" target="_blank" rel="noopener">prometheus-operator</a>: 集群中安装了 prometheus-operator 后，就可以通过创建 CRD 对象来部署 Thanos 了。</li>
@@ -219,7 +218,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ck9gfzvc20004ausgzomdih4i" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ck9gge1xs0004bfy17bbpy4c4" class="article-share-link">Share</a>
       
       
     </footer>
