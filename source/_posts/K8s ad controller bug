@@ -26,12 +26,12 @@ date: 2020/05/13 21:00:00
 
 - `kubectl describe pod`
 
-![enter image description here](http://km.oa.com/files/photos/pictures/202003/1584678660_92_w1222_h314.png)
+![enter image description here](https://main.qcloudimg.com/raw/e502a73a01436daa323e6747ae151b67.png)
 
 
 -  kubelet log
 
-![enter image description here](http://km.oa.com/files/photos/pictures/202003/1584678669_87_w1189_h293.png)
+![enter image description here](https://main.qcloudimg.com/raw/376e655665a8738810a78370f9bd3bee.png)
 
 
 - `kubectl get node xxx -oyaml` 的`volumesAttached`和`volumesInUse`
@@ -59,7 +59,7 @@ k8s中涉及存储的组件主要有：attach/detach controller、pv controller�
   - 各厂商的包括：aws-ebs、azure、我们的cbs等
 - **scheduler**：涉及到volume的调度。比如对ebs、csi等的单node最大可attach磁盘数量的predicate策略
 
-![enter image description here](http://km.oa.com/files/photos/pictures//20200320//1584684389_6.png)
+![enter image description here](https://main.qcloudimg.com/raw/9acf4b3722150ca3c315e19cd0b17132.png)
 
 
 控制器模式是k8s非常重要的概念，一般一个controller会去管理一个或多个API对象，以让对象从实际状态/当前状态趋近于期望状态。
