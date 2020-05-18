@@ -1,0 +1,219 @@
+---
+title: "揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸"
+date: 2020/05/08 18:00:00
+---
+
+作者: [李志宇](https://github.com/payall4u)
+
+
+#### containerd 镜像丢失文件问题说明
+近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下：
+
+某些特定的镜像会稳定丢失文件；
+
+“丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现；
+
+v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。
+
+通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文章，希望和大家分享下解决问题的经历和镜像生成的原理。为了方便某些心急的同学，本文接下来将首先揭晓该问题的答案~
+
+#### 根因和解决方案
+
+由于内核 overlay 模块 Bug，当 containerd 从镜像仓库下载镜像的“压缩包”生成镜像的“层”时，overlay 错误地把trusted.overlay.opaque=y这个 xattrs 从下层传递到了上层。如果某个目录设置了这个属性，overlay 则会认为这个目录是不透明的，以至于在进行联合挂载时该目录将会把下面的目录覆盖掉，进而导致镜像文件丢失的问题。
+
+这个问题的解决方案可以有两种，一种简单粗暴，直接升级内核中 overlay 模块即可。
+
+另外一种可以考虑把 containerd 从 v1.2 版本升级到 v1.3，原因在于 containerd v1.3 中会主动设置上述 opaque 属性，该版本 containerd 不会触发 overlayfs 的 bug。当然，这种方式是规避而非彻底解决 Bug。
+
+#### snapshotter 生成镜像原理分析
+
+虽然根本原因看起来比较简单，但分析的过程还是比较曲折的。在分享下这个问题的排查过程和收获之前，为了方便大家理解，本小节将集中讲解问题排查过程涉及到的 containerd 和 overlayfs 的知识，比较了解或者不感兴趣的同学可以直接跳过。
+
+与 docker daemon 一开始的设计不同，为了减少耦合性，containerd 通过插件的方式由多个模块组成。结合下图可以看出，其中与镜像相关的模块包含以下几种：
+
+![enter image description here](https://main.qcloudimg.com/raw/da8285980cbdafa55dfdc5719e920e96.png)
+- metadata 是 containerd 通过 bbolt 实现的 kv 存储模块，用来保存镜像、容器或者层等元信息。比如命令行 ctr 列出所有 snapshot 或 kubelet 获取所有 pod 都是通过 metadata 模块查询的数据。
+- content 是负责保存 blob 的模块，其保存的关于镜像的内容一般分为三种：
+  1. 镜像的 manifest（一个普通的 json，其中指定了镜像的 config 和镜像的 layers 数组）
+  2. 镜像的 config（同样是个 json，其中指定镜像的元信息，比如启动命令、环境变量等）
+  3. 镜像的 layer（tar 包，解压、处理后会生成镜像的层）
+
+- snapshots 是快照模块总称，可以设置使用不同的快照模块，常见的模块有 overlayfs、aufs 或 native。在 unpack 时 snapshots 会把生成镜像层并保存到文件系统；当运行容器时，可以调用 snapshots 模块给容器提供 rootfs 。
+
+容器镜像规范主要有 docker 和 oci v1、v2 三种，考虑到这三种规范在原理上大同小异，可以参考以下示例，将 manifest 当作是每个镜像只有一份的元信息，用于指向镜像的 config 和每层 layer。其中，config 即为镜像配置，把镜像作为容器运行时需要；layer 即为镜像的每一层。
+
+``` go
+type manifest struct {
+  c config
+  layers []layer
+}
+```
+
+镜像下载流程与图 1 中数字标注出来的顺序一致，每个步骤作用总结如下：
+
+首先在 metadata 模块中添加一个 image，这样我们在执行 list image 时可看到这个 image。
+
+其次是需要下载镜像，因为镜像是有 manifest、config、layers 等多个部分组成，所以先下载镜像的 manifest 并保存到 content 模块，再解析 manifest 获取 config 的地址和 layers 的地址。接下来分别把 config 和每个 layer 下载并保存到 content 模块，这里需要强调镜像的 layer 本来应该是目录，当创建容器时联合挂载到 root 下，但是为了方便网络传输和存储，这里会用 tar + 压缩的方式保存。这里保存到 content 也是不解压的。
+
+③、④、⑤的作用关联性比较强，此处放在一起解释。snapshot 模块去 content 模块读取 manifest，找到镜像的所有层，再去 content 模块把这些层自“下”而“上”读取出来，逐一解压并加工，最后放到 snapshot 模块的目录下，像图 1 中的 1001/fs、1002/fs 这些都是镜像的层。（当创建容器时，需要把这些层联合挂载生成容器的 rootfs，可以理解成1001/fs + 1002/fs + ... => 1008/work)。
+
+整个流程的函数调用关系如下图 2，喜欢阅读源码的同学可以照着这个去看下。
+![enter image description here](https://main.qcloudimg.com/raw/7c7768df98a9f0e5a56646cb70b0b9ec.png)
+
+
+
+为了方便理解，接下来用 layer 表示 snapshot 中的层，把刚下载未经过加工的“层”称之为镜像层的 tar 包或者是 tar 包。
+
+下载镜像保存入 content 的流程比较简单，直接跳过就好。而通过镜像的 tar 包生成 snapshot 中的 layer 这个过程比较巧妙，甚至 bug 也是出现在这里，接下来进行重点描述。
+
+首先通过 content 拿到了镜像的 manifest，这样我们得知镜像是有哪些层组成的。最下面一层镜像比较简单，直接解压到 snapshot 提供的目录就可以了，比如 10/fs。假设接下来要在 11/fs 生成第二层（此时 11/fs 还是空的），snapshot 会使用mount -t overlay overlay -o lowerdir=10/fs,upperdir=11/fs,workdir=11/work tmp把已经生成好的 layer 10  和还未生成的 layer 11 挂载到一个 tmp 目录上，其中写入层是 11/fs 也就是我们想要生成的 layer。去  content 中拿到 layer 11 对应的 tar 包，遍历这个 tar 包，根据 tar 包中不同的文件对挂载点 tmp 进行写入或者删除文件的操作（因为是联合挂载，所以对于挂载点的操作都会变成对写入层的操作）。把 tar 包转化成 layer 的具体逻辑和下面经过简化的源码一致，可以看到如果 tar 包中存在 whiteout 文件或者当前的层比如 11/fs 和之前的层有冲突比如 10/fs，会把底层目录删掉。在把 tar 包的文件写入到目录后，会根据 tar 包中记录的 PAXRecords 给文件添加 xattr，PAXRecords 可以看做是 tar 中每个文件都带有的 kv 数组，可以用来映射文件系统中文件属性。
+``` go
+// 这里的tmp就是overlay的挂载点
+applyNaive(tar, tmp) {
+  for tar.hashNext() {
+    tar_file := tar.Next()										// tar包中的文件
+    real_file := path.Join(root, file.base)		// 现实世界的文件
+    // 按照规则删除文件
+    if isWhiteout(info) {
+      whiteRM(real_file)
+    }
+    if !(file.IsDir() && IsDir(real_file)) {
+      rm(real_file)
+    } 
+    // 把tar包的文件写入到layer中
+    createFileOrDir(tar_file, real_file)
+    for k, v := range tar_file.PAXRecords {
+      setxattr(real_file, k, v)
+    }
+  }
+}
+```
+
+需要删除的这些情况总结如下：
+
+如果存在同名目录，两者进行 merge
+
+如果存在同名但不都是目录，需要删除掉下层目录（上文件下目录、上目录下文件、上文件下文件）
+
+如果存在 .wh. 文件，需要移除底层应该被覆盖掉的目录，比如目录下存在 .wh..wh.opaque 文件，就需要删除 lowerdir 中的对应目录。
+
+   ![enter image description here](https://main.qcloudimg.com/raw/f6757b2c3f36744914ca0fe6040441e6.png)
+
+当然这里的删除也没那么简单，还记得当前的操作都是通过挂载点来删除底层的文件么？在 overlay 中，如果通过挂载点删除 lower 层的内容，不会把文件真的从 lower 的文件目录中干掉，而是会在 upper 层中添加 whiteout，添加 whiteout 的其中一种方式就是设置上层目录的 xattr trusted.overlay.opaque=y。
+
+
+
+当 tar 包遍历结束以后，对 tmp 做个 umount，得到的 11/fs 就是我们想要的 layer，当我们想要生成 12/fs 这个 layer 时，只需要把 10/fs，11/fs 作为 lowerdir，把 12/fs 作为 upperdir 联合挂载就可以。也就是说，之后镜像的每一个 layer 生成都是需要把之前的 layer 挂载，下面图说明了整个流程。
+
+![enter image description here](https://main.qcloudimg.com/raw/b6894ff43fda3eb5e1ff7ed6121e893c.png)
+
+可以考虑下为什么要这么大费周章？关键有两点。
+
+一是镜像中的删除下层文件是要遵循 image-spec 中对于 whiteout 文件的定义（[image-spec](https://github.com/opencontainers/image-spec/blob/9f4348abedbe4415e6db1f08689fa7588045d982/layer.md)），这个文件只会在 tar 包中作为标识，并不会产生真正的影响。而起到真正作用的是在 applyNaive 碰到了 whiteout 文件，会调用联合文件系统对底层目录进行删除，当然这个删除对于 overlay 就是标记 opaque。
+
+二是因为存在文件和目录相互覆盖的现象，每一个 tar 包中的文件都需要和之前所有 tar包 中的内容进行比对，如果不借用联合文件系统的“超能力”，我们就只能拿着 tar 中的每一个文件对之前的层遍历。
+
+#### 问题排查过程
+
+了解了镜像相关的知识，我们来看看这个问题的排查过程。首先我们观察用户的容器，经过简化和打码目录结构如下，其中目录 modules 就是事故多发地。
+
+``` sh
+/data
+└── prom
+    ├── bin
+    └── modules
+        ├── file
+        └── lib/
+```
+
+再观察下用户的镜像的各个层。我们把镜像的层按照从下往上用递增的 ID 来标注，对这个目录有修改的有 5099、5101、5102、5103、5104 这几层。把容器运行起来后，看到的 modules 目录和 **5104** 提供的一样。并没有把 5103 等“下面”的镜像合并起来，相当于 **5104** 把下面的目录都覆盖掉了（当然，**5104** 和 **5103** 文件是有区别的）。
+
+##### 5104 下层目录为何被覆盖？
+看到这里，首先想到是不是创建容器的 rootfs 时参数出现了问题，导致少 mount 了一些层？于是模拟手动挂载mount -t overlay overlay -o lowerdir=5104:5103 point把最上两层挂载，结果 **5104** 依然把 **5103** 覆盖了。这里推断可能是存在 overlay 的 .wh. 文件，于是尝试在这两层中搜 .wh. 文件，无果。于是去查 overlayfs 的文档：
+
+> A directory is made opaque by setting the xattr "trusted.overlay.opaque"
+> to "y".  Where the upper filesystem contains an opaque directory, any
+> directory in the lower filesystem with the same name is ignored.
+
+设置了属性 trusted.overlay.opaque=y 的目录会变成“不透明”的，当上层文件系统被设置为“不透明”时，下层中同名的目录会被忽略。overlay 如果想要在上层把下层覆盖掉，就需要设置这个属性。
+
+通过命令getfattr -n "trusted.overlay.opaque" dir查看发现，**5104** 下面的 /data/asr_offline/modules 果然带有这个属性，这一现象也进而导致了下层目录被“覆盖”。
+
+```sh
+[root@]$ getfattr -n "trusted.overlay.opaque" 5104/fs/data/asr_offline/modules
+# file: 5102/fs/data/asr_offline/modules
+trusted.overlay.opaque="y"
+```
+
+一波多折，层层追究
+那么问题来了，为什么只有特定的发行版会出现这个现象？我们尝试在 ubuntu 拉下镜像，发现“同源”目录居然没有设置 opaque！由于镜像的层通过把源文件解压和解包生成的，我们决定在确保不同操作系统中的“镜像源文件”的 md5 相同之后，在各个操作系统上把镜像源文件通过tar -zxf进行解包并重新手动挂载，发现 **5104** 均不会把 **5103** 覆盖。
+
+根据以上现象推断，可能是某些发行版下的 containerd 从 content 读取 tar 包并解压制作 snapshot 的 layer 时出现问题，错误地把 snapshot 的目录设置上了这个属性。
+
+为验证该推断，决定进行源代码梳理，由此发现了其中的疑点（相关代码如下）——生成 layers 时遍历 tar 包会读取每个文件的 PAXRecords 并且把这个设置在文件的 xattr 上（ tar 包给每个文件都准备了 PAXRecords，和 Pod 的 labels 等价）。
+
+``` go
+func applyNaive() {
+  // ...
+  for k, v := range tar_file.PAXRecords {
+		setxattr(real_file, k, v)
+  }
+}
+
+func setxattr(path, key, value string) error {
+	return unix.Lsetxattr(path, key, []byte(value), 0)
+}
+```
+
+因为之前实验过 v1.3 的 containerd 不会出现这个问题，所以对照了下两者的代码，发现两者从 tar 包中抽取 PAXRecords 设置 xattr 的逻辑两者是不一样的。v1.3 的代码如下：
+
+``` go
+func setxattr(path, key, value string) error {
+	// Do not set trusted attributes
+	if strings.HasPrefix(key, "trusted.") {
+		return errors.Wrap(unix.ENOTSUP, "admin attributes from archive not supported")
+	}
+	return unix.Lsetxattr(path, key, []byte(value), 0)
+}
+```
+
+也就是说 v1.3.0 中不会设置以trusted.开头的 xattr！如果 tar 包中某目录带有trusted.overlay.opaque=y这个 PAX，低版本的 containerd 可能就会把这些属性设置到 snapshot 的目录上，而高版本的却不会。那么，当用户在打包时，如果把 opaque 也打到 tar 包中，解压得到的 layer 对应目录也就会带有这个属性。**5104** 这个目录可能就是这个原因才变成 opaque 的。
+
+为了验证这个观点，我写了一段简单的程序来扫描与 layer 对应的 content 来寻找这个属性，结果发现 **5102**、**5103**、**5104** 几个层都没有这个属性。这时我也开始怀疑这个观点了，毕竟如果只是 tar 包中有特别的标识，应该不会在不同的操作系统表现不同。
+
+抱着最后一丝希望扫描了 **5099** 和 **5101**，果然也并没有这个属性。但在扫描的过程中，注意到 **5101** 的 tar 包里存在 /data/asr_offline/modules/.wh..wh.opq 这个文件。记得当时看代码 applyNaive 时如果遇到了 .wh..wh.opq 对应的操作应该是在挂载点删除 /data/asr_offline/modules，而在 overlay 中删除 lower 目录会给 upper 同名目录加上trusted.overlay.opaque=y。也就是说，在生成 layer **5101** 时（需要提前挂载好 **5100** 和 **5099**），遍历 tar 包遇到了这个 wh 文件，应该先在挂载点删除 modules，也就是会在 **5101** 对应目录加上 opaque=y。
+
+再次以验证源代码成果的心态，去 snapshot 的 5101/fs 下查看目录 modules 的 opaque，果然和想象的一样。这些文件应该都是在 lower层，所以对应的 overlayfs 的操作应该是在 upper 也就是 **5101** 层的 /data/asr_offline/modules 目录设置trusted.overlay.opaque=y。去查看 **5101** 的这个目录，果然带有这个属性，好奇心驱使着我继续查看了 **5102**、**5103**、**5104** 这几层的目录，发现居然都有这个属性。
+
+也就是这些 layer 每个都会把下面的覆盖掉？这好像不符合常理。于是，去表现正常的 ubuntu 中查看，发现只有 **5101** 有这个属性。经过反复确认 **5102**、**5103**、**5104** 的 tar 包中的确没有目录 modules 的 whiteout 文件，也就是说镜像原本的意图就是让 **5101** 把下面的层覆盖掉，再把 **5101**、**5102**、**5103**、**5104** 这几层的 modules 目录 merge 起来。整个生成镜像的流程里，只有“借用”overlay 生成 snapshot 的 layer 会涉及到操作系统。
+
+##### 云开雾散，大胆猜探
+我们不妨大胆猜测一下，会不会像下图这样，在生成 layer **5102** 时，因为内核或 overlay 的 bug 把 modules 也添加了不透明的属性？
+
+![enter image description here](https://main.qcloudimg.com/raw/98362e7c7e20199f0a15ed99c0b86a1b.png)
+
+为了对这个特性做单独的测试，写了个简单的脚本。运行脚本之后，果然发现在这个发行版中，如果 overlay 的低层目录有这个属性并且在 upper 层中创建了同样的目录，会把这个 opaque“传播”到 upper 层的目录中。如果像 containerd 那样递推生成镜像，肯定从有 whiteout 层开始上面的每一层都会具有这个属性，也就导致了最终容器在某些特定的目录只能看到最上面一层。
+
+``` sh
+`#!/bin/bash
+
+mkdir 1 2 work p
+mkdir 1/func
+touch 1/func/min
+
+mount -t overlay overlay p -o lowerdir=1,upperdir=2,workdir=work
+rm -rf p/func
+mkdir -p p/func
+touch p/func/max
+umount p
+getfattr -n "trusted.overlay.opaque" 2/func
+
+mkdir 3
+mount -t overlay overlay p -o lowerdir=2:1,upperdir=3,workdir=work
+touch p/func/sqrt
+umount p
+getfattr -n "trusted.overlay.opaque" 3/func`
+```
+
+### 最终总结
+在几个内核大佬的帮助下，确认了是内核 overlayfs 模块的 bug。在 lower 层调用 copy_up 时并没有检测 xattr，从而导致 opaque 这个 xattr 传播到了 upper 层。做联合挂载时，如果上层的文件得到了这个属性，自然会把下层文件覆盖掉，也就出现了镜像中丢失文件的现象。反思整个排查过程，其实很难在一开始就把问题定位到内核的某个模块上，好在可以另辟蹊径通过测试和阅读源码逐步逼近“真相”，成功寻得解决方案。
