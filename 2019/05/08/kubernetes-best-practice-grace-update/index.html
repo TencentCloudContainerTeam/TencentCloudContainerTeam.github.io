@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="腾讯云容器团队">
 <meta property="og:description" content="作者: 陈鹏 当kubernetes对服务滚动更新的期间，默认配置的情况下可能会让部分连接异常（比如连接被拒绝），我们来分析下原因并给出最佳实践 滚动更新场景使用 deployment 部署服务并关联 service  修改 deployment 的 replica 调整副本数量来滚动更新 升级程序版本(修改镜像tag)触发 deployment 新建 replicaset 启动新版本的 pod">
 <meta property="og:locale" content="zh-cn">
-<meta property="og:updated_time" content="2020-05-18T08:09:28.249Z">
+<meta property="og:updated_time" content="2020-05-22T02:23:57.356Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="kubernetes 最佳实践：优雅热更新">
 <meta name="twitter:description" content="作者: 陈鹏 当kubernetes对服务滚动更新的期间，默认配置的情况下可能会让部分连接异常（比如连接被拒绝），我们来分析下原因并给出最佳实践 滚动更新场景使用 deployment 部署服务并关联 service  修改 deployment 的 replica 调整副本数量来滚动更新 升级程序版本(修改镜像tag)触发 deployment 新建 replicaset 启动新版本的 pod">
@@ -113,7 +113,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ckac7jvry000hdfojivrow1ai" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/05/08/kubernetes-best-practice-grace-update/" data-id="ckahkyzi9000jatu5z6uillkq" class="article-share-link">Share</a>
       
       
     </footer>
@@ -158,7 +158,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -171,6 +171,14 @@
       <ul>
         
           <li>
+            <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
+          </li>
+        
+          <li>
+            <a href="/2020/05/08/containerd-image-file-loss/">揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸</a>
+          </li>
+        
+          <li>
             <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
           </li>
         
@@ -180,14 +188,6 @@
         
           <li>
             <a href="/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
-          </li>
-        
-          <li>
-            <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
-          </li>
-        
-          <li>
-            <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
           </li>
         
       </ul>

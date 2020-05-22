@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 李志宇 containerd 镜像丢失文件问题说明近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下： 某些特定的镜像会稳定丢失文件； “丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现； v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。 通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2020/05/08/containerd-image-file-loss/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 李志宇 containerd 镜像丢失文件问题说明近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下： 某些特定的镜像会稳定丢失文件； “丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现； v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。 通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://main.qcloudimg.com/raw/da8285980cbdafa55dfdc5719e920e96.png">
+<meta property="og:image" content="https://main.qcloudimg.com/raw/7c7768df98a9f0e5a56646cb70b0b9ec.png">
+<meta property="og:image" content="https://main.qcloudimg.com/raw/f6757b2c3f36744914ca0fe6040441e6.png">
+<meta property="og:image" content="https://main.qcloudimg.com/raw/b6894ff43fda3eb5e1ff7ed6121e893c.png">
+<meta property="og:image" content="https://main.qcloudimg.com/raw/98362e7c7e20199f0a15ed99c0b86a1b.png">
+<meta property="og:updated_time" content="2020-05-22T02:23:57.356Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸">
+<meta name="twitter:description" content="作者: 李志宇 containerd 镜像丢失文件问题说明近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下： 某些特定的镜像会稳定丢失文件； “丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现； v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。 通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文">
+<meta name="twitter:image" content="https://main.qcloudimg.com/raw/da8285980cbdafa55dfdc5719e920e96.png">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-containerd-image-file-loss" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/05/08/containerd-image-file-loss/" class="article-date">
+  <time datetime="2020-05-08T10:00:00.000Z" itemprop="datePublished">2020-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/payall4u" target="_blank" rel="noopener">李志宇</a></p>
+<h4 id="containerd-镜像丢失文件问题说明"><a href="#containerd-镜像丢失文件问题说明" class="headerlink" title="containerd 镜像丢失文件问题说明"></a>containerd 镜像丢失文件问题说明</h4><p>近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下：</p>
+<p>某些特定的镜像会稳定丢失文件；</p>
+<p>“丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现；</p>
+<p>v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。</p>
+<p>通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文章，希望和大家分享下解决问题的经历和镜像生成的原理。为了方便某些心急的同学，本文接下来将首先揭晓该问题的答案~</p>
+<h4 id="根因和解决方案"><a href="#根因和解决方案" class="headerlink" title="根因和解决方案"></a>根因和解决方案</h4><p>由于内核 overlay 模块 Bug，当 containerd 从镜像仓库下载镜像的“压缩包”生成镜像的“层”时，overlay 错误地把trusted.overlay.opaque=y这个 xattrs 从下层传递到了上层。如果某个目录设置了这个属性，overlay 则会认为这个目录是不透明的，以至于在进行联合挂载时该目录将会把下面的目录覆盖掉，进而导致镜像文件丢失的问题。</p>
+<p>这个问题的解决方案可以有两种，一种简单粗暴，直接升级内核中 overlay 模块即可。</p>
+<p>另外一种可以考虑把 containerd 从 v1.2 版本升级到 v1.3，原因在于 containerd v1.3 中会主动设置上述 opaque 属性，该版本 containerd 不会触发 overlayfs 的 bug。当然，这种方式是规避而非彻底解决 Bug。</p>
+<h4 id="snapshotter-生成镜像原理分析"><a href="#snapshotter-生成镜像原理分析" class="headerlink" title="snapshotter 生成镜像原理分析"></a>snapshotter 生成镜像原理分析</h4><p>虽然根本原因看起来比较简单，但分析的过程还是比较曲折的。在分享下这个问题的排查过程和收获之前，为了方便大家理解，本小节将集中讲解问题排查过程涉及到的 containerd 和 overlayfs 的知识，比较了解或者不感兴趣的同学可以直接跳过。</p>
+<p>与 docker daemon 一开始的设计不同，为了减少耦合性，containerd 通过插件的方式由多个模块组成。结合下图可以看出，其中与镜像相关的模块包含以下几种：</p>
+<p><img src="https://main.qcloudimg.com/raw/da8285980cbdafa55dfdc5719e920e96.png" alt="enter image description here"></p>
+<ul>
+<li>metadata 是 containerd 通过 bbolt 实现的 kv 存储模块，用来保存镜像、容器或者层等元信息。比如命令行 ctr 列出所有 snapshot 或 kubelet 获取所有 pod 都是通过 metadata 模块查询的数据。</li>
+<li><p>content 是负责保存 blob 的模块，其保存的关于镜像的内容一般分为三种：</p>
+<ol>
+<li>镜像的 manifest（一个普通的 json，其中指定了镜像的 config 和镜像的 layers 数组）</li>
+<li>镜像的 config（同样是个 json，其中指定镜像的元信息，比如启动命令、环境变量等）</li>
+<li>镜像的 layer（tar 包，解压、处理后会生成镜像的层）</li>
+</ol>
+</li>
+<li><p>snapshots 是快照模块总称，可以设置使用不同的快照模块，常见的模块有 overlayfs、aufs 或 native。在 unpack 时 snapshots 会把生成镜像层并保存到文件系统；当运行容器时，可以调用 snapshots 模块给容器提供 rootfs 。</p>
+</li>
+</ul>
+<p>容器镜像规范主要有 docker 和 oci v1、v2 三种，考虑到这三种规范在原理上大同小异，可以参考以下示例，将 manifest 当作是每个镜像只有一份的元信息，用于指向镜像的 config 和每层 layer。其中，config 即为镜像配置，把镜像作为容器运行时需要；layer 即为镜像的每一层。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> manifest <span class="keyword">struct</span> &#123;</span><br><span class="line">  c config</span><br><span class="line">  layers []layer</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>镜像下载流程与图 1 中数字标注出来的顺序一致，每个步骤作用总结如下：</p>
+<p>首先在 metadata 模块中添加一个 image，这样我们在执行 list image 时可看到这个 image。</p>
+<p>其次是需要下载镜像，因为镜像是有 manifest、config、layers 等多个部分组成，所以先下载镜像的 manifest 并保存到 content 模块，再解析 manifest 获取 config 的地址和 layers 的地址。接下来分别把 config 和每个 layer 下载并保存到 content 模块，这里需要强调镜像的 layer 本来应该是目录，当创建容器时联合挂载到 root 下，但是为了方便网络传输和存储，这里会用 tar + 压缩的方式保存。这里保存到 content 也是不解压的。</p>
+<p>③、④、⑤的作用关联性比较强，此处放在一起解释。snapshot 模块去 content 模块读取 manifest，找到镜像的所有层，再去 content 模块把这些层自“下”而“上”读取出来，逐一解压并加工，最后放到 snapshot 模块的目录下，像图 1 中的 1001/fs、1002/fs 这些都是镜像的层。（当创建容器时，需要把这些层联合挂载生成容器的 rootfs，可以理解成1001/fs + 1002/fs + … =&gt; 1008/work)。</p>
+<p>整个流程的函数调用关系如下图 2，喜欢阅读源码的同学可以照着这个去看下。<br><img src="https://main.qcloudimg.com/raw/7c7768df98a9f0e5a56646cb70b0b9ec.png" alt="enter image description here"></p>
+<p>为了方便理解，接下来用 layer 表示 snapshot 中的层，把刚下载未经过加工的“层”称之为镜像层的 tar 包或者是 tar 包。</p>
+<p>下载镜像保存入 content 的流程比较简单，直接跳过就好。而通过镜像的 tar 包生成 snapshot 中的 layer 这个过程比较巧妙，甚至 bug 也是出现在这里，接下来进行重点描述。</p>
+<p>首先通过 content 拿到了镜像的 manifest，这样我们得知镜像是有哪些层组成的。最下面一层镜像比较简单，直接解压到 snapshot 提供的目录就可以了，比如 10/fs。假设接下来要在 11/fs 生成第二层（此时 11/fs 还是空的），snapshot 会使用mount -t overlay overlay -o lowerdir=10/fs,upperdir=11/fs,workdir=11/work tmp把已经生成好的 layer 10  和还未生成的 layer 11 挂载到一个 tmp 目录上，其中写入层是 11/fs 也就是我们想要生成的 layer。去  content 中拿到 layer 11 对应的 tar 包，遍历这个 tar 包，根据 tar 包中不同的文件对挂载点 tmp 进行写入或者删除文件的操作（因为是联合挂载，所以对于挂载点的操作都会变成对写入层的操作）。把 tar 包转化成 layer 的具体逻辑和下面经过简化的源码一致，可以看到如果 tar 包中存在 whiteout 文件或者当前的层比如 11/fs 和之前的层有冲突比如 10/fs，会把底层目录删掉。在把 tar 包的文件写入到目录后，会根据 tar 包中记录的 PAXRecords 给文件添加 xattr，PAXRecords 可以看做是 tar 中每个文件都带有的 kv 数组，可以用来映射文件系统中文件属性。<br><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 这里的tmp就是overlay的挂载点</span></span><br><span class="line">applyNaive(tar, tmp) &#123;</span><br><span class="line">  <span class="keyword">for</span> tar.hashNext() &#123;</span><br><span class="line">    tar_file := tar.Next()										<span class="comment">// tar包中的文件</span></span><br><span class="line">    real_file := path.Join(root, file.base)		<span class="comment">// 现实世界的文件</span></span><br><span class="line">    <span class="comment">// 按照规则删除文件</span></span><br><span class="line">    <span class="keyword">if</span> isWhiteout(info) &#123;</span><br><span class="line">      whiteRM(real_file)</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> !(file.IsDir() &amp;&amp; IsDir(real_file)) &#123;</span><br><span class="line">      rm(real_file)</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="comment">// 把tar包的文件写入到layer中</span></span><br><span class="line">    createFileOrDir(tar_file, real_file)</span><br><span class="line">    <span class="keyword">for</span> k, v := <span class="keyword">range</span> tar_file.PAXRecords &#123;</span><br><span class="line">      setxattr(real_file, k, v)</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>需要删除的这些情况总结如下：</p>
+<p>如果存在同名目录，两者进行 merge</p>
+<p>如果存在同名但不都是目录，需要删除掉下层目录（上文件下目录、上目录下文件、上文件下文件）</p>
+<p>如果存在 .wh. 文件，需要移除底层应该被覆盖掉的目录，比如目录下存在 .wh..wh.opaque 文件，就需要删除 lowerdir 中的对应目录。</p>
+<p>   <img src="https://main.qcloudimg.com/raw/f6757b2c3f36744914ca0fe6040441e6.png" alt="enter image description here"></p>
+<p>当然这里的删除也没那么简单，还记得当前的操作都是通过挂载点来删除底层的文件么？在 overlay 中，如果通过挂载点删除 lower 层的内容，不会把文件真的从 lower 的文件目录中干掉，而是会在 upper 层中添加 whiteout，添加 whiteout 的其中一种方式就是设置上层目录的 xattr trusted.overlay.opaque=y。</p>
+<p>当 tar 包遍历结束以后，对 tmp 做个 umount，得到的 11/fs 就是我们想要的 layer，当我们想要生成 12/fs 这个 layer 时，只需要把 10/fs，11/fs 作为 lowerdir，把 12/fs 作为 upperdir 联合挂载就可以。也就是说，之后镜像的每一个 layer 生成都是需要把之前的 layer 挂载，下面图说明了整个流程。</p>
+<p><img src="https://main.qcloudimg.com/raw/b6894ff43fda3eb5e1ff7ed6121e893c.png" alt="enter image description here"></p>
+<p>可以考虑下为什么要这么大费周章？关键有两点。</p>
+<p>一是镜像中的删除下层文件是要遵循 image-spec 中对于 whiteout 文件的定义（<a href="https://github.com/opencontainers/image-spec/blob/9f4348abedbe4415e6db1f08689fa7588045d982/layer.md" target="_blank" rel="noopener">image-spec</a>），这个文件只会在 tar 包中作为标识，并不会产生真正的影响。而起到真正作用的是在 applyNaive 碰到了 whiteout 文件，会调用联合文件系统对底层目录进行删除，当然这个删除对于 overlay 就是标记 opaque。</p>
+<p>二是因为存在文件和目录相互覆盖的现象，每一个 tar 包中的文件都需要和之前所有 tar包 中的内容进行比对，如果不借用联合文件系统的“超能力”，我们就只能拿着 tar 中的每一个文件对之前的层遍历。</p>
+<h4 id="问题排查过程"><a href="#问题排查过程" class="headerlink" title="问题排查过程"></a>问题排查过程</h4><p>了解了镜像相关的知识，我们来看看这个问题的排查过程。首先我们观察用户的容器，经过简化和打码目录结构如下，其中目录 modules 就是事故多发地。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">/data</span><br><span class="line">└── prom</span><br><span class="line">    ├── bin</span><br><span class="line">    └── modules</span><br><span class="line">        ├── file</span><br><span class="line">        └── lib/</span><br></pre></td></tr></table></figure>
+<p>再观察下用户的镜像的各个层。我们把镜像的层按照从下往上用递增的 ID 来标注，对这个目录有修改的有 5099、5101、5102、5103、5104 这几层。把容器运行起来后，看到的 modules 目录和 <strong>5104</strong> 提供的一样。并没有把 5103 等“下面”的镜像合并起来，相当于 <strong>5104</strong> 把下面的目录都覆盖掉了（当然，<strong>5104</strong> 和 <strong>5103</strong> 文件是有区别的）。</p>
+<h5 id="5104-下层目录为何被覆盖？"><a href="#5104-下层目录为何被覆盖？" class="headerlink" title="5104 下层目录为何被覆盖？"></a>5104 下层目录为何被覆盖？</h5><p>看到这里，首先想到是不是创建容器的 rootfs 时参数出现了问题，导致少 mount 了一些层？于是模拟手动挂载mount -t overlay overlay -o lowerdir=5104:5103 point把最上两层挂载，结果 <strong>5104</strong> 依然把 <strong>5103</strong> 覆盖了。这里推断可能是存在 overlay 的 .wh. 文件，于是尝试在这两层中搜 .wh. 文件，无果。于是去查 overlayfs 的文档：</p>
+<blockquote>
+<p>A directory is made opaque by setting the xattr “trusted.overlay.opaque”<br>to “y”.  Where the upper filesystem contains an opaque directory, any<br>directory in the lower filesystem with the same name is ignored.</p>
+</blockquote>
+<p>设置了属性 trusted.overlay.opaque=y 的目录会变成“不透明”的，当上层文件系统被设置为“不透明”时，下层中同名的目录会被忽略。overlay 如果想要在上层把下层覆盖掉，就需要设置这个属性。</p>
+<p>通过命令getfattr -n “trusted.overlay.opaque” dir查看发现，<strong>5104</strong> 下面的 /data/asr_offline/modules 果然带有这个属性，这一现象也进而导致了下层目录被“覆盖”。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[root@]$ getfattr -n <span class="string">"trusted.overlay.opaque"</span> 5104/fs/data/asr_offline/modules</span><br><span class="line"><span class="comment"># file: 5102/fs/data/asr_offline/modules</span></span><br><span class="line">trusted.overlay.opaque=<span class="string">"y"</span></span><br></pre></td></tr></table></figure>
+<p>一波多折，层层追究<br>那么问题来了，为什么只有特定的发行版会出现这个现象？我们尝试在 ubuntu 拉下镜像，发现“同源”目录居然没有设置 opaque！由于镜像的层通过把源文件解压和解包生成的，我们决定在确保不同操作系统中的“镜像源文件”的 md5 相同之后，在各个操作系统上把镜像源文件通过tar -zxf进行解包并重新手动挂载，发现 <strong>5104</strong> 均不会把 <strong>5103</strong> 覆盖。</p>
+<p>根据以上现象推断，可能是某些发行版下的 containerd 从 content 读取 tar 包并解压制作 snapshot 的 layer 时出现问题，错误地把 snapshot 的目录设置上了这个属性。</p>
+<p>为验证该推断，决定进行源代码梳理，由此发现了其中的疑点（相关代码如下）——生成 layers 时遍历 tar 包会读取每个文件的 PAXRecords 并且把这个设置在文件的 xattr 上（ tar 包给每个文件都准备了 PAXRecords，和 Pod 的 labels 等价）。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">applyNaive</span><span class="params">()</span></span> &#123;</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  <span class="keyword">for</span> k, v := <span class="keyword">range</span> tar_file.PAXRecords &#123;</span><br><span class="line">		setxattr(real_file, k, v)</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">setxattr</span><span class="params">(path, key, value <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> unix.Lsetxattr(path, key, []<span class="keyword">byte</span>(value), <span class="number">0</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因为之前实验过 v1.3 的 containerd 不会出现这个问题，所以对照了下两者的代码，发现两者从 tar 包中抽取 PAXRecords 设置 xattr 的逻辑两者是不一样的。v1.3 的代码如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">setxattr</span><span class="params">(path, key, value <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// Do not set trusted attributes</span></span><br><span class="line">	<span class="keyword">if</span> strings.HasPrefix(key, <span class="string">"trusted."</span>) &#123;</span><br><span class="line">		<span class="keyword">return</span> errors.Wrap(unix.ENOTSUP, <span class="string">"admin attributes from archive not supported"</span>)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> unix.Lsetxattr(path, key, []<span class="keyword">byte</span>(value), <span class="number">0</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>也就是说 v1.3.0 中不会设置以trusted.开头的 xattr！如果 tar 包中某目录带有trusted.overlay.opaque=y这个 PAX，低版本的 containerd 可能就会把这些属性设置到 snapshot 的目录上，而高版本的却不会。那么，当用户在打包时，如果把 opaque 也打到 tar 包中，解压得到的 layer 对应目录也就会带有这个属性。<strong>5104</strong> 这个目录可能就是这个原因才变成 opaque 的。</p>
+<p>为了验证这个观点，我写了一段简单的程序来扫描与 layer 对应的 content 来寻找这个属性，结果发现 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 几个层都没有这个属性。这时我也开始怀疑这个观点了，毕竟如果只是 tar 包中有特别的标识，应该不会在不同的操作系统表现不同。</p>
+<p>抱着最后一丝希望扫描了 <strong>5099</strong> 和 <strong>5101</strong>，果然也并没有这个属性。但在扫描的过程中，注意到 <strong>5101</strong> 的 tar 包里存在 /data/asr_offline/modules/.wh..wh.opq 这个文件。记得当时看代码 applyNaive 时如果遇到了 .wh..wh.opq 对应的操作应该是在挂载点删除 /data/asr_offline/modules，而在 overlay 中删除 lower 目录会给 upper 同名目录加上trusted.overlay.opaque=y。也就是说，在生成 layer <strong>5101</strong> 时（需要提前挂载好 <strong>5100</strong> 和 <strong>5099</strong>），遍历 tar 包遇到了这个 wh 文件，应该先在挂载点删除 modules，也就是会在 <strong>5101</strong> 对应目录加上 opaque=y。</p>
+<p>再次以验证源代码成果的心态，去 snapshot 的 5101/fs 下查看目录 modules 的 opaque，果然和想象的一样。这些文件应该都是在 lower层，所以对应的 overlayfs 的操作应该是在 upper 也就是 <strong>5101</strong> 层的 /data/asr_offline/modules 目录设置trusted.overlay.opaque=y。去查看 <strong>5101</strong> 的这个目录，果然带有这个属性，好奇心驱使着我继续查看了 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 这几层的目录，发现居然都有这个属性。</p>
+<p>也就是这些 layer 每个都会把下面的覆盖掉？这好像不符合常理。于是，去表现正常的 ubuntu 中查看，发现只有 <strong>5101</strong> 有这个属性。经过反复确认 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 的 tar 包中的确没有目录 modules 的 whiteout 文件，也就是说镜像原本的意图就是让 <strong>5101</strong> 把下面的层覆盖掉，再把 <strong>5101</strong>、<strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 这几层的 modules 目录 merge 起来。整个生成镜像的流程里，只有“借用”overlay 生成 snapshot 的 layer 会涉及到操作系统。</p>
+<h5 id="云开雾散，大胆猜探"><a href="#云开雾散，大胆猜探" class="headerlink" title="云开雾散，大胆猜探"></a>云开雾散，大胆猜探</h5><p>我们不妨大胆猜测一下，会不会像下图这样，在生成 layer <strong>5102</strong> 时，因为内核或 overlay 的 bug 把 modules 也添加了不透明的属性？</p>
+<p><img src="https://main.qcloudimg.com/raw/98362e7c7e20199f0a15ed99c0b86a1b.png" alt="enter image description here"></p>
+<p>为了对这个特性做单独的测试，写了个简单的脚本。运行脚本之后，果然发现在这个发行版中，如果 overlay 的低层目录有这个属性并且在 upper 层中创建了同样的目录，会把这个 opaque“传播”到 upper 层的目录中。如果像 containerd 那样递推生成镜像，肯定从有 whiteout 层开始上面的每一层都会具有这个属性，也就导致了最终容器在某些特定的目录只能看到最上面一层。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">`<span class="comment">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line">mkdir 1 2 work p</span><br><span class="line">mkdir 1/func</span><br><span class="line">touch 1/func/min</span><br><span class="line"></span><br><span class="line">mount -t overlay overlay p -o lowerdir=1,upperdir=2,workdir=work</span><br><span class="line">rm -rf p/func</span><br><span class="line">mkdir -p p/func</span><br><span class="line">touch p/func/max</span><br><span class="line">umount p</span><br><span class="line">getfattr -n <span class="string">"trusted.overlay.opaque"</span> 2/func</span><br><span class="line"></span><br><span class="line">mkdir 3</span><br><span class="line">mount -t overlay overlay p -o lowerdir=2:1,upperdir=3,workdir=work</span><br><span class="line">touch p/func/sqrt</span><br><span class="line">umount p</span><br><span class="line">getfattr -n <span class="string">"trusted.overlay.opaque"</span> 3/func`</span><br></pre></td></tr></table></figure>
+<h3 id="最终总结"><a href="#最终总结" class="headerlink" title="最终总结"></a>最终总结</h3><p>在几个内核大佬的帮助下，确认了是内核 overlayfs 模块的 bug。在 lower 层调用 copy_up 时并没有检测 xattr，从而导致 opaque 这个 xattr 传播到了 upper 层。做联合挂载时，如果上层的文件得到了这个属性，自然会把下层文件覆盖掉，也就出现了镜像中丢失文件的现象。反思整个排查过程，其实很难在一开始就把问题定位到内核的某个模块上，好在可以另辟蹊径通过测试和阅读源码逐步逼近“真相”，成功寻得解决方案。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/08/containerd-image-file-loss/" data-id="ckahkyzhu0008atu53t6339um" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2020/05/13/K8s-ad-controller-bug/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2020/04/24/k8s-configmap-volume/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">大规模使用ConfigMap卷的负载分析及缓解方案</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
+          </li>
+        
+          <li>
+            <a href="/2020/05/08/containerd-image-file-loss/">揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2020 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>

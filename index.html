@@ -63,6 +63,381 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-K8s-ad-controller-bug" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/05/13/K8s-ad-controller-bug/" class="article-date">
+  <time datetime="2020-05-13T13:00:00.000Z" itemprop="datePublished">2020-05-13</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者： <a href="https://github.com/ivan-cai" target="_blank" rel="noopener">蔡靖</a></p>
+<h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><p>本文主要通过深入学习k8s attach/detach controller源码，了解现网案例发现的attach/detach controller bug发生的原委，并给出解决方案。</p>
+<p>看完本文你也将学习到：</p>
+<ul>
+<li>attach/detach controller的主要数据结构有哪些，保存什么数据，数据从哪来，到哪去等等；</li>
+<li>k8s attach/detach volume的详细流程，如何判断volume是否需要attach/detach，attach/detach controller和kubelet(volume manager)如何协同工作等等。</li>
+</ul>
+<h3 id="现网案例现象"><a href="#现网案例现象" class="headerlink" title="现网案例现象"></a>现网案例现象</h3><p>我们首先了解下现网案例的问题和现象；然后去深入理解ad controller维护的数据结构；之后根据数据结构与ad controller的代码逻辑，再来详细分析现网案例出现的原因和解决方案。从而深入理解整个ad controller。</p>
+<h4 id="问题描述"><a href="#问题描述" class="headerlink" title="问题描述"></a>问题描述</h4><ul>
+<li>一个statefulsets(sts)引用了多个pvc cbs，我们更新sts时，删除旧pod，创建新pod，此时如果删除旧pod时cbs detach失败，且创建的新pod调度到和旧pod相同的节点，就可能会让这些pod一直处于<code>ContainerCreating</code> 。</li>
+</ul>
+<h4 id="现象"><a href="#现象" class="headerlink" title="现象"></a>现象</h4><ul>
+<li><code>kubectl describe pod</code></li>
+</ul>
+<p><img src="https://main.qcloudimg.com/raw/e502a73a01436daa323e6747ae151b67.png" alt="enter image description here"></p>
+<ul>
+<li>kubelet log</li>
+</ul>
+<p><img src="https://main.qcloudimg.com/raw/376e655665a8738810a78370f9bd3bee.png" alt="enter image description here"></p>
+<ul>
+<li><code>kubectl get node xxx -oyaml</code> 的<code>volumesAttached</code>和<code>volumesInUse</code></li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">volumesAttached:</span><br><span class="line">  - devicePath: /dev/disk/by-id/virtio-disk-6w87j3wv</span><br><span class="line">    name: kubernetes.io/qcloud-cbs/disk-6w87j3wv</span><br><span class="line">volumesInUse:</span><br><span class="line">  - kubernetes.io/qcloud-cbs/disk-6w87j3wv</span><br><span class="line">  - kubernetes.io/qcloud-cbs/disk-7bfqsft5</span><br></pre></td></tr></table></figure>
+<h3 id="k8s存储简述"><a href="#k8s存储简述" class="headerlink" title="k8s存储简述"></a>k8s存储简述</h3><p>k8s中attach/detach controller负责存储插件的attach/detach。本文结合现网出现的一个案例来分析ad controller的源码逻辑，该案例是因k8s的ad controller bug导致的pod创建失败。</p>
+<p>k8s中涉及存储的组件主要有：attach/detach controller、pv controller、volume manager、volume plugins、scheduler。每个组件分工明确：</p>
+<ul>
+<li><strong>attach/detach controller</strong>：负责对volume进行attach/detach</li>
+<li><strong>pv controller</strong>：负责处理pv/pvc对象，包括pv的provision/delete（cbs intree的provisioner设计成了external provisioner，独立的cbs-provisioner来负责cbs pv的provision/delete）</li>
+<li><strong>volume manager</strong>：主要负责对volume进行mount/unmount</li>
+<li><strong>volume plugins</strong>：包含k8s原生的和各厂商的的存储插件<ul>
+<li>原生的包括：emptydir、hostpath、flexvolume、csi等</li>
+<li>各厂商的包括：aws-ebs、azure、我们的cbs等</li>
+</ul>
+</li>
+<li><strong>scheduler</strong>：涉及到volume的调度。比如对ebs、csi等的单node最大可attach磁盘数量的predicate策略</li>
+</ul>
+<p><img src="https://main.qcloudimg.com/raw/9acf4b3722150ca3c315e19cd0b17132.png" alt="enter image description here"></p>
+<p>控制器模式是k8s非常重要的概念，一般一个controller会去管理一个或多个API对象，以让对象从实际状态/当前状态趋近于期望状态。</p>
+<p>所以attach/detach controller的作用其实就是去attach期望被attach的volume，detach期望被detach的volume。</p>
+<p>后续attach/detach controller简称ad controller。</p>
+<h3 id="ad-controller数据结构"><a href="#ad-controller数据结构" class="headerlink" title="ad controller数据结构"></a>ad controller数据结构</h3><p>对于ad controller来说，理解了其内部的数据结构，再去理解逻辑就事半功倍。ad controller在内存中维护2个数据结构：</p>
+<ol>
+<li><code>actualStateOfWorld</code>  ——   表征实际状态（后面简称asw）</li>
+<li><code>desiredStateOfWorld</code>  ——    表征期望状态（后面简称dsw）</li>
+</ol>
+<p>很明显，对于声明式API来说，是需要随时比对实际状态和期望状态的，所以ad controller中就用了2个数据结构来分别表征实际状态和期望状态。</p>
+<h4 id="actualStateOfWorld"><a href="#actualStateOfWorld" class="headerlink" title="actualStateOfWorld"></a>actualStateOfWorld</h4><p><code>actualStateOfWorld</code>  包含2个map：</p>
+<ul>
+<li><code>attachedVolumes</code>： 包含了那些ad controller认为被成功attach到nodes上的volumes</li>
+<li><code>nodesToUpdateStatusFor</code>： 包含要更新<code>node.Status.VolumesAttached</code> 的nodes</li>
+</ul>
+<h5 id="attachedVolumes"><a href="#attachedVolumes" class="headerlink" title="attachedVolumes"></a>attachedVolumes</h5><h6 id="如何填充数据？"><a href="#如何填充数据？" class="headerlink" title="如何填充数据？"></a>如何填充数据？</h6><p>1、在启动ad controller时，会populate asw，此时会list集群内所有node对象，然后用这些node对象的<code>node.Status.VolumesAttached</code> 去填充<code>attachedVolumes</code>。</p>
+<p>2、之后只要有需要attach的volume被成功attach了，就会调用<code>MarkVolumeAsAttached</code>（<code>GenerateAttachVolumeFunc</code> 中）来填充到<code>attachedVolumes中</code>。</p>
+<h6 id="如何删除数据？"><a href="#如何删除数据？" class="headerlink" title="如何删除数据？"></a>如何删除数据？</h6><p>1、只有在volume被detach成功后，才会把相关的volume从<code>attachedVolumes</code>中删掉。（<code>GenerateDetachVolumeFunc</code> 中调用<code>MarkVolumeDetached</code>)</p>
+<h5 id="nodesToUpdateStatusFor"><a href="#nodesToUpdateStatusFor" class="headerlink" title="nodesToUpdateStatusFor"></a>nodesToUpdateStatusFor</h5><h6 id="如何填充数据？-1"><a href="#如何填充数据？-1" class="headerlink" title="如何填充数据？"></a>如何填充数据？</h6><p>1、detach volume失败后，将volume add back到<code>nodesToUpdateStatusFor</code></p>
+<p>​    - <code>GenerateDetachVolumeFunc</code> 中调用<code>AddVolumeToReportAsAttached</code></p>
+<h6 id="如何删除数据？-1"><a href="#如何删除数据？-1" class="headerlink" title="如何删除数据？"></a>如何删除数据？</h6><p>1、在detach volume之前会先调用<code>RemoveVolumeFromReportAsAttached</code> 从<code>nodesToUpdateStatusFor</code>中先删除该volume相关信息</p>
+<h4 id="desiredStateOfWorld"><a href="#desiredStateOfWorld" class="headerlink" title="desiredStateOfWorld"></a>desiredStateOfWorld</h4><p><code>desiredStateOfWorld</code> 中维护了一个map：</p>
+<p><code>nodesManaged</code>：包含被ad controller管理的nodes，以及期望attach到这些node上的volumes。</p>
+<h5 id="nodesManaged"><a href="#nodesManaged" class="headerlink" title="nodesManaged"></a>nodesManaged</h5><h6 id="如何填充数据？-2"><a href="#如何填充数据？-2" class="headerlink" title="如何填充数据？"></a>如何填充数据？</h6><p>1、在启动ad controller时，会populate asw，list集群内所有node对象，然后把由ad controller管理的node填充到<code>nodesManaged</code></p>
+<p>2、ad controller的<code>nodeInformer</code> watch到node有更新也会把node填充到<code>nodesManaged</code></p>
+<p>3、另外在populate dsw和<code>podInformer</code> watch到pod有变化（add, update）时，往<code>nodesManaged</code> 中填充volume和pod的信息</p>
+<p>4、<code>desiredStateOfWorldPopulator</code> 中也会周期性地去找出需要被add的pod，此时也会把相应的volume和pod填充到<code>nodesManaged</code> </p>
+<h6 id="如何删除数据？-2"><a href="#如何删除数据？-2" class="headerlink" title="如何删除数据？"></a>如何删除数据？</h6><p>1、当删除node时，ad controller中的<code>nodeInformer</code> watch到变化会从dsw的<code>nodesManaged</code> 中删除相应的node</p>
+<p>2、当ad controller中的<code>podInformer</code> watch到pod的删除时，会从<code>nodesManaged</code> 中删除相应的volume和pod</p>
+<p>3、<code>desiredStateOfWorldPopulator</code> 中也会周期性地去找出需要被删除的pod，此时也会从<code>nodesManaged</code> 中删除相应的volume和pod</p>
+<h3 id="ad-controller流程简述"><a href="#ad-controller流程简述" class="headerlink" title="ad controller流程简述"></a>ad controller流程简述</h3><p>ad controller的逻辑比较简单：</p>
+<p>1、首先，list集群内所有的node和pod，来populate <code>actualStateOfWorld</code> (<code>attachedVolumes</code> )和<code>desiredStateOfWorld</code> (<code>nodesManaged</code>)</p>
+<p>2、然后，单独开个goroutine运行<code>reconciler</code>，通过触发attach, detach操作周期性地去reconcile asw（实际状态）和dws（期望状态）</p>
+<ul>
+<li>触发attach，detach操作也就是，detach该被detach的volume，attach该被attach的volume</li>
+</ul>
+<p>3、之后，又单独开个goroutine运行<code>DesiredStateOfWorldPopulator</code> ，定期去验证dsw中的pods是否依然存在，如果不存在就从dsw中删除</p>
+<h3 id="现网案例"><a href="#现网案例" class="headerlink" title="现网案例"></a>现网案例</h3><p>接下来结合上面所说的现网案例，来详细看看<code>reconciler</code>的逻辑。</p>
+<h4 id="案例初步分析"><a href="#案例初步分析" class="headerlink" title="案例初步分析"></a>案例初步分析</h4><ul>
+<li>从pod的事件可以看出来：ad controller认为cbs attach成功了，然后kubelet没有mount成功。</li>
+<li><strong><em>但是</em></strong>从kubelet日志却发现<code>Volume not attached according to node status</code> ，也就是说kubelet认为cbs没有按照node的状态去挂载。这个从node info也可以得到证实：<code>volumesAttached</code> 中的确没有这个cbs盘（disk-7bfqsft5）。</li>
+<li>node info中还有个现象：<code>volumesInUse</code> 中还有这个cbs。说明没有unmount成功</li>
+</ul>
+<p>很明显，cbs要能被pod成功使用，需要ad controller和volume manager的协同工作。所以这个问题的定位首先要明确：</p>
+<ol>
+<li>volume manager为什么认为volume没有按照node状态挂载，ad controller却认为volume attch成功了？</li>
+<li><code>volumesAttached</code>和<code>volumesInUse</code> 在ad controller和kubelet之间充当什么角色？</li>
+</ol>
+<p>这里只对分析volume manager做简要分析。</p>
+<ul>
+<li>根据<code>Volume not attached according to node status</code> 在代码中找到对应的位置，发现在<code>GenerateVerifyControllerAttachedVolumeFunc</code> 中。仔细看代码逻辑，会发现<ul>
+<li>volume manager的reconciler会先确认该被unmount的volume被unmount掉</li>
+<li>然后确认该被mount的volume被mount<ul>
+<li>此时会先从volume manager的dsw缓存中获取要被mount的volumes（<code>volumesToMount</code>的<code>podsToMount</code> ）</li>
+<li>然后遍历，验证每个<code>volumeToMount</code>是否已经attach了<ul>
+<li><code>这个volumeToMount</code>是由<code>podManager</code>中的<code>podInformer</code>加入到相应内存中，然后<code>desiredStateOfWorldPopulator</code>周期性同步到dsw中的</li>
+</ul>
+</li>
+<li>验证逻辑中，在<code>GenerateVerifyControllerAttachedVolumeFunc</code>中会去遍历本节点的<code>node.Status.VolumesAttached</code>，如果没有找到就报错（<code>Volume not attached according to node status</code>）</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>所以可以看出来，<strong><em>volume manager就是根据volume是否存在于<code>node.Status.VolumesAttached</code> 中来判断volume有无被attach成功</em></strong>。</li>
+<li>那谁去填充<code>node.Status.VolumesAttached</code> ？ad controller的数据结构<code>nodesToUpdateStatusFor</code> 就是用来存储要更新到<code>node.Status.VolumesAttached</code> 上的数据的。</li>
+<li>所以，<strong><em>如果ad controller那边没有更新<code>node.Status.VolumesAttached</code>，而又新建了pod，<code>desiredStateOfWorldPopulator</code> 从podManager中的内存把新建pod引用的volume同步到了<code>volumesToMount</code>中，在验证volume是否attach时，就会报错（Volume not attached according to node status）</em></strong><ul>
+<li>当然，之后由于kublet的syncLoop里面会调用<code>WaitForAttachAndMount</code> 去等待volumeattach和mount成功，由于前面一直无法成功，等待超时，才会有会面<code>timeout expired</code> 的报错</li>
+</ul>
+</li>
+</ul>
+<p>所以接下来主要需要看为什么ad controller那边没有更新<code>node.Status.VolumesAttached</code>。</p>
+<h4 id="ad-controller的reconciler详解"><a href="#ad-controller的reconciler详解" class="headerlink" title="ad controller的reconciler详解"></a>ad controller的<code>reconciler</code>详解</h4><p>接下来详细分析下ad controller的逻辑，看看为什么会没有更新<code>node.Status.VolumesAttached</code>，但从事件看ad controller却又认为volume已经挂载成功。</p>
+<p>从<a href="#流程简述">流程简述</a>中表述可见，ad controller主要逻辑是在<code>reconciler</code>中。</p>
+<ul>
+<li><p><code>reconciler</code>定时去运行<code>reconciliationLoopFunc</code>，周期为100ms。</p>
+</li>
+<li><p><code>reconciliationLoopFunc</code>的主要逻辑在<code>reconcile()</code>中：</p>
+<ol>
+<li><p>首先，确保该被detach的volume被detach掉</p>
+<ul>
+<li>遍历asw中的<code>attachedVolumes</code>，对于每个volume，判断其是否存在于dsw中<ul>
+<li>根据nodeName去dsw.nodesManaged中判断node是否存在</li>
+<li>存在的话，再根据volumeName判断volume是否存在</li>
+</ul>
+</li>
+<li>如果volume存在于asw，且不存在于dsw，则意味着需要进行detach</li>
+<li>之后，根据<code>node.Status.VolumesInUse</code>来判断volume是否已经unmount完成，unmount完成或者等待6min timeout时间到后，会继续detach逻辑</li>
+<li>在执行detach volume之前，会先调用<code>RemoveVolumeFromReportAsAttached</code>从asw的<code>nodesToUpdateStatusFor</code>中去删除要detach的volume</li>
+<li>然后patch node，也就等于从<code>node.status.VolumesAttached</code>删除这个volume</li>
+<li>之后进行detach，detach失败主要分2种<ul>
+<li>如果真正执行了<code>volumePlugin</code>的具体实现<code>DetachVolume</code>失败，会把volume add back到<code>nodesToUpdateStatusFor</code>（之后在attach逻辑结束后，会再次patch node）</li>
+<li>如果是operator_excutor判断还没到backoff周期，就会返回<code>backoffError</code>，直接跳过<code>DetachVolume</code></li>
+</ul>
+</li>
+<li>backoff周期起始为500ms，之后指数递增至2min2s。已经detach失败了的volume，在每个周期期间进入detach逻辑都会直接返回<code>backoffError</code></li>
+</ul>
+</li>
+<li><p>之后，确保该被attach的volume被attach成功</p>
+<ul>
+<li><p>遍历dsw的<code>nodesManaged</code>，判断volume是否已经被attach到该node，如果已经被attach到该node，则跳过attach操作</p>
+</li>
+<li><p>去asw.attachedVolumes中判断是否存在，若不存在就认为没有attach到node</p>
+<ul>
+<li>若存在，再判断node，node也匹配就返回<code>attachedConfirmed</code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+</li>
+</ul>
+<pre><code> - 而`attachedConfirmed`是由asw中`AddVolumeNode`去设置的，`MarkVolumeAsAttached`设置为true。（true即代表该volume已经被attach到该node了）
+     - 之后判断是否禁止多挂载，再由operator_excutor去执行attach
+
+3. 最后，`UpdateNodeStatuses`去更新node status
+</code></pre><h4 id="案例详细分析"><a href="#案例详细分析" class="headerlink" title="案例详细分析"></a>案例详细分析</h4><ul>
+<li>前提<ul>
+<li>volume detach失败</li>
+<li>sts+cbs(pvc)，pod recreate前后调度到相同的node</li>
+</ul>
+</li>
+<li>涉及k8s组件<ul>
+<li>ad controller</li>
+<li>kubelet(volume namager)</li>
+</ul>
+</li>
+<li>ad controller和kubelet(volume namager)通过字段<code>node.status.VolumesAttached</code>交互。<ul>
+<li>ad controller为<code>node.status.VolumesAttached</code>新增或删除volume，新增表明已挂载，删除表明已删除</li>
+<li>kubelet(volume manager)需要验证新建pod中的(pvc的)volume是否挂载成功，存在于<code>node.status.VolumesAttached</code>中，则表明验证volume已挂载成功；不存在，则表明还未挂载成功。</li>
+</ul>
+</li>
+<li>以下是整个过程：</li>
+</ul>
+<ol>
+<li>首先，删除pod时，由于某种原因cbs detach失败，失败后就会backoff重试。<ol>
+<li>由于detach失败，该volume也不会从asw的<code>attachedVolumes</code>中删除</li>
+</ol>
+</li>
+<li>由于detach时，<ol>
+<li>先从<code>node.status.VolumesAttached</code>中删除volume，之后才去执行detach</li>
+<li>detach时返回<code>backoffError</code>不会把该volumeadd back <code>node.status.VolumesAttached</code></li>
+</ol>
+</li>
+<li>之后，我们在backoff周期中（假如就为第一个周期的500ms中间）再次创建sts，pod被调度到之前的node</li>
+<li>而pod一旦被创建，就会被添加到dsw的<code>nodesManaged</code>(nodeName和volumeName都没变)</li>
+<li>reconcile()中的第2步，会去判断volume是否被attach，此时发现该volume同时存在于asw和dws中，并且由于detach失败，也会在检测时发现还是attach，从而设置<code>attachedConfirmed</code>为true</li>
+<li>ad controller就认为该volume被attach成功了</li>
+<li>reconcile()中第1步的detach逻辑进行判断时，发现要detach的volume已经存在于<code>dsw.nodesManaged</code>了（由于nodeName和volumeName都没变），这样volume同时存在于asw和dsw中了，实际状态和期望状态一致，被认为就不需要进行detach了。</li>
+<li>这样，该volume之后就再也不会被add back到<code>node.status.VolumesAttached</code>。所以就出现了现象中的node info中没有该volume，而ad controller又认为该volume被attach成功了</li>
+<li>由于kubelet(volume manager)与controller manager是异步的，而它们之间交互是依据<code>node.status.VolumesAttached</code> ，所以volume manager在验证volume是否attach成功，发现<code>node.status.VolumesAttached</code>中没有这个voume，也就认为没有attach成功，所以就有了现象中的报错<code>Volume not attached according to node status</code></li>
+<li>之后kubelet的<code>syncPod</code>在等待pod所有的volume attach和mount成功时，就超时了(现象中的另一个报错<code>timeout expired wating...</code>)。</li>
+<li>所以pod一直处于<code>ContainerCreating</code></li>
+</ol>
+<h4 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h4><ul>
+<li>所以，该案例出现的原因是：<ul>
+<li>sts+cbs，pod recreate时间被调度到相同的node</li>
+<li>由于detach失败，backoff期间创建sts/pod，致使ad controller中的dsw和asw数据一致（此时该volume由于没有被detach成功而确实处于attach状态），从而导致ad controller认为不再需要去detach该volume。</li>
+<li>又由于detach时，是先从<code>node.status.VolumesAttached</code>中删除该volume，再去执行真正的<code>DetachVolume</code>。backoff期间直接返回<code>backoffError</code>，跳过<code>DetachVolume</code>，不会add back</li>
+<li>之后，ad controller因volume已经处于attach状态，认为不再需要被attach，就不会再向<code>node.status.VolumesAttached</code>中添加该volume</li>
+<li>最后，kubelet与ad controller交互就通过<code>node.status.VolumesAttached</code>，所以kubelet认为没有attach成功，新创建的pod就一直处于<code>ContianerCreating</code>了</li>
+</ul>
+</li>
+<li>据此，我们可以发现关键点在于<code>node.status.VolumesAttached</code>和以下两个逻辑：<ol>
+<li>detach时backoffError，不会add back</li>
+<li>detach是先删除，失败再add back</li>
+</ol>
+</li>
+<li>所以只要想办法能在任何情况下add back就不会有问题了。根据以上两个逻辑就对应有以下2种解决方案，<strong>推荐使用方案2</strong>：<ol>
+<li>backoffError时，也add back<ul>
+<li><a href="https://github.com/kubernetes/kubernetes/pull/72914" target="_blank" rel="noopener">pr #72914</a><ul>
+<li>但这种方式有个缺点：patch node的请求数增加了10+次/(s * volume)</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>一进入detach逻辑就判断是否backoffError（处于backoff周期中），是就跳过之后所有detach逻辑，不删除就不需要add back了。<ul>
+<li><a href="https://github.com/kubernetes/kubernetes/pull/88572" target="_blank" rel="noopener">pr #88572</a><ul>
+<li>这个方案能避免方案1的问题，且会进一步减少请求apiserver的次数，且改动也不多</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+</li>
+</ul>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><ul>
+<li>AD Controller负责存储的Attach、Detach。通过比较asw和dsw来判断是否需要attach/detach。最终attach和detach结果会体现在<code>node.status.VolumesAttached</code>。</li>
+<li>以上现网案例出现的现象，是k8s ad controller的bug导致，目前社区并未修复。<ul>
+<li>现象出现的原因主要是：<ul>
+<li>先删除旧pod过程中detach失败，而在detach失败的backoff周期中创建新pod，此时由于ad controller逻辑bug，导致volume被从<code>node.status.VolumesAttached</code>中删除，从而导致创建新pod时，kubelet检查时认为该volume没有attach成功，致使pod就一直处于<code>ContianerCreating</code>。</li>
+</ul>
+</li>
+<li>而现象的解决方案，推荐使用<a href="https://github.com/kubernetes/kubernetes/pull/88572" target="_blank" rel="noopener">pr #88572</a>。目前TKE已经有该方案的稳定运行版本，在灰度中。</li>
+</ul>
+</li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/13/K8s-ad-controller-bug/" data-id="ckahkyzhl0001atu55r3qar8p" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
+    <article id="post-containerd-image-file-loss" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/05/08/containerd-image-file-loss/" class="article-date">
+  <time datetime="2020-05-08T10:00:00.000Z" itemprop="datePublished">2020-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/05/08/containerd-image-file-loss/">揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://github.com/payall4u" target="_blank" rel="noopener">李志宇</a></p>
+<h4 id="containerd-镜像丢失文件问题说明"><a href="#containerd-镜像丢失文件问题说明" class="headerlink" title="containerd 镜像丢失文件问题说明"></a>containerd 镜像丢失文件问题说明</h4><p>近期有客户反映某些容器镜像出现了文件丢失的奇怪现象，经过模拟复现汇总出丢失情况如下：</p>
+<p>某些特定的镜像会稳定丢失文件；</p>
+<p>“丢失”在某些发行版稳定复现，但在 ubuntu 上不会出现；</p>
+<p>v1.2 版本的 containerd 会文件丢失，而 v1.3 不会。</p>
+<p>通过阅读源码和文档，最终解决了这个 containerd 镜像丢失问题，并写下了这篇文章，希望和大家分享下解决问题的经历和镜像生成的原理。为了方便某些心急的同学，本文接下来将首先揭晓该问题的答案~</p>
+<h4 id="根因和解决方案"><a href="#根因和解决方案" class="headerlink" title="根因和解决方案"></a>根因和解决方案</h4><p>由于内核 overlay 模块 Bug，当 containerd 从镜像仓库下载镜像的“压缩包”生成镜像的“层”时，overlay 错误地把trusted.overlay.opaque=y这个 xattrs 从下层传递到了上层。如果某个目录设置了这个属性，overlay 则会认为这个目录是不透明的，以至于在进行联合挂载时该目录将会把下面的目录覆盖掉，进而导致镜像文件丢失的问题。</p>
+<p>这个问题的解决方案可以有两种，一种简单粗暴，直接升级内核中 overlay 模块即可。</p>
+<p>另外一种可以考虑把 containerd 从 v1.2 版本升级到 v1.3，原因在于 containerd v1.3 中会主动设置上述 opaque 属性，该版本 containerd 不会触发 overlayfs 的 bug。当然，这种方式是规避而非彻底解决 Bug。</p>
+<h4 id="snapshotter-生成镜像原理分析"><a href="#snapshotter-生成镜像原理分析" class="headerlink" title="snapshotter 生成镜像原理分析"></a>snapshotter 生成镜像原理分析</h4><p>虽然根本原因看起来比较简单，但分析的过程还是比较曲折的。在分享下这个问题的排查过程和收获之前，为了方便大家理解，本小节将集中讲解问题排查过程涉及到的 containerd 和 overlayfs 的知识，比较了解或者不感兴趣的同学可以直接跳过。</p>
+<p>与 docker daemon 一开始的设计不同，为了减少耦合性，containerd 通过插件的方式由多个模块组成。结合下图可以看出，其中与镜像相关的模块包含以下几种：</p>
+<p><img src="https://main.qcloudimg.com/raw/da8285980cbdafa55dfdc5719e920e96.png" alt="enter image description here"></p>
+<ul>
+<li>metadata 是 containerd 通过 bbolt 实现的 kv 存储模块，用来保存镜像、容器或者层等元信息。比如命令行 ctr 列出所有 snapshot 或 kubelet 获取所有 pod 都是通过 metadata 模块查询的数据。</li>
+<li><p>content 是负责保存 blob 的模块，其保存的关于镜像的内容一般分为三种：</p>
+<ol>
+<li>镜像的 manifest（一个普通的 json，其中指定了镜像的 config 和镜像的 layers 数组）</li>
+<li>镜像的 config（同样是个 json，其中指定镜像的元信息，比如启动命令、环境变量等）</li>
+<li>镜像的 layer（tar 包，解压、处理后会生成镜像的层）</li>
+</ol>
+</li>
+<li><p>snapshots 是快照模块总称，可以设置使用不同的快照模块，常见的模块有 overlayfs、aufs 或 native。在 unpack 时 snapshots 会把生成镜像层并保存到文件系统；当运行容器时，可以调用 snapshots 模块给容器提供 rootfs 。</p>
+</li>
+</ul>
+<p>容器镜像规范主要有 docker 和 oci v1、v2 三种，考虑到这三种规范在原理上大同小异，可以参考以下示例，将 manifest 当作是每个镜像只有一份的元信息，用于指向镜像的 config 和每层 layer。其中，config 即为镜像配置，把镜像作为容器运行时需要；layer 即为镜像的每一层。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> manifest <span class="keyword">struct</span> &#123;</span><br><span class="line">  c config</span><br><span class="line">  layers []layer</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>镜像下载流程与图 1 中数字标注出来的顺序一致，每个步骤作用总结如下：</p>
+<p>首先在 metadata 模块中添加一个 image，这样我们在执行 list image 时可看到这个 image。</p>
+<p>其次是需要下载镜像，因为镜像是有 manifest、config、layers 等多个部分组成，所以先下载镜像的 manifest 并保存到 content 模块，再解析 manifest 获取 config 的地址和 layers 的地址。接下来分别把 config 和每个 layer 下载并保存到 content 模块，这里需要强调镜像的 layer 本来应该是目录，当创建容器时联合挂载到 root 下，但是为了方便网络传输和存储，这里会用 tar + 压缩的方式保存。这里保存到 content 也是不解压的。</p>
+<p>③、④、⑤的作用关联性比较强，此处放在一起解释。snapshot 模块去 content 模块读取 manifest，找到镜像的所有层，再去 content 模块把这些层自“下”而“上”读取出来，逐一解压并加工，最后放到 snapshot 模块的目录下，像图 1 中的 1001/fs、1002/fs 这些都是镜像的层。（当创建容器时，需要把这些层联合挂载生成容器的 rootfs，可以理解成1001/fs + 1002/fs + … =&gt; 1008/work)。</p>
+<p>整个流程的函数调用关系如下图 2，喜欢阅读源码的同学可以照着这个去看下。<br><img src="https://main.qcloudimg.com/raw/7c7768df98a9f0e5a56646cb70b0b9ec.png" alt="enter image description here"></p>
+<p>为了方便理解，接下来用 layer 表示 snapshot 中的层，把刚下载未经过加工的“层”称之为镜像层的 tar 包或者是 tar 包。</p>
+<p>下载镜像保存入 content 的流程比较简单，直接跳过就好。而通过镜像的 tar 包生成 snapshot 中的 layer 这个过程比较巧妙，甚至 bug 也是出现在这里，接下来进行重点描述。</p>
+<p>首先通过 content 拿到了镜像的 manifest，这样我们得知镜像是有哪些层组成的。最下面一层镜像比较简单，直接解压到 snapshot 提供的目录就可以了，比如 10/fs。假设接下来要在 11/fs 生成第二层（此时 11/fs 还是空的），snapshot 会使用mount -t overlay overlay -o lowerdir=10/fs,upperdir=11/fs,workdir=11/work tmp把已经生成好的 layer 10  和还未生成的 layer 11 挂载到一个 tmp 目录上，其中写入层是 11/fs 也就是我们想要生成的 layer。去  content 中拿到 layer 11 对应的 tar 包，遍历这个 tar 包，根据 tar 包中不同的文件对挂载点 tmp 进行写入或者删除文件的操作（因为是联合挂载，所以对于挂载点的操作都会变成对写入层的操作）。把 tar 包转化成 layer 的具体逻辑和下面经过简化的源码一致，可以看到如果 tar 包中存在 whiteout 文件或者当前的层比如 11/fs 和之前的层有冲突比如 10/fs，会把底层目录删掉。在把 tar 包的文件写入到目录后，会根据 tar 包中记录的 PAXRecords 给文件添加 xattr，PAXRecords 可以看做是 tar 中每个文件都带有的 kv 数组，可以用来映射文件系统中文件属性。<br><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 这里的tmp就是overlay的挂载点</span></span><br><span class="line">applyNaive(tar, tmp) &#123;</span><br><span class="line">  <span class="keyword">for</span> tar.hashNext() &#123;</span><br><span class="line">    tar_file := tar.Next()										<span class="comment">// tar包中的文件</span></span><br><span class="line">    real_file := path.Join(root, file.base)		<span class="comment">// 现实世界的文件</span></span><br><span class="line">    <span class="comment">// 按照规则删除文件</span></span><br><span class="line">    <span class="keyword">if</span> isWhiteout(info) &#123;</span><br><span class="line">      whiteRM(real_file)</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> !(file.IsDir() &amp;&amp; IsDir(real_file)) &#123;</span><br><span class="line">      rm(real_file)</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="comment">// 把tar包的文件写入到layer中</span></span><br><span class="line">    createFileOrDir(tar_file, real_file)</span><br><span class="line">    <span class="keyword">for</span> k, v := <span class="keyword">range</span> tar_file.PAXRecords &#123;</span><br><span class="line">      setxattr(real_file, k, v)</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>需要删除的这些情况总结如下：</p>
+<p>如果存在同名目录，两者进行 merge</p>
+<p>如果存在同名但不都是目录，需要删除掉下层目录（上文件下目录、上目录下文件、上文件下文件）</p>
+<p>如果存在 .wh. 文件，需要移除底层应该被覆盖掉的目录，比如目录下存在 .wh..wh.opaque 文件，就需要删除 lowerdir 中的对应目录。</p>
+<p>   <img src="https://main.qcloudimg.com/raw/f6757b2c3f36744914ca0fe6040441e6.png" alt="enter image description here"></p>
+<p>当然这里的删除也没那么简单，还记得当前的操作都是通过挂载点来删除底层的文件么？在 overlay 中，如果通过挂载点删除 lower 层的内容，不会把文件真的从 lower 的文件目录中干掉，而是会在 upper 层中添加 whiteout，添加 whiteout 的其中一种方式就是设置上层目录的 xattr trusted.overlay.opaque=y。</p>
+<p>当 tar 包遍历结束以后，对 tmp 做个 umount，得到的 11/fs 就是我们想要的 layer，当我们想要生成 12/fs 这个 layer 时，只需要把 10/fs，11/fs 作为 lowerdir，把 12/fs 作为 upperdir 联合挂载就可以。也就是说，之后镜像的每一个 layer 生成都是需要把之前的 layer 挂载，下面图说明了整个流程。</p>
+<p><img src="https://main.qcloudimg.com/raw/b6894ff43fda3eb5e1ff7ed6121e893c.png" alt="enter image description here"></p>
+<p>可以考虑下为什么要这么大费周章？关键有两点。</p>
+<p>一是镜像中的删除下层文件是要遵循 image-spec 中对于 whiteout 文件的定义（<a href="https://github.com/opencontainers/image-spec/blob/9f4348abedbe4415e6db1f08689fa7588045d982/layer.md" target="_blank" rel="noopener">image-spec</a>），这个文件只会在 tar 包中作为标识，并不会产生真正的影响。而起到真正作用的是在 applyNaive 碰到了 whiteout 文件，会调用联合文件系统对底层目录进行删除，当然这个删除对于 overlay 就是标记 opaque。</p>
+<p>二是因为存在文件和目录相互覆盖的现象，每一个 tar 包中的文件都需要和之前所有 tar包 中的内容进行比对，如果不借用联合文件系统的“超能力”，我们就只能拿着 tar 中的每一个文件对之前的层遍历。</p>
+<h4 id="问题排查过程"><a href="#问题排查过程" class="headerlink" title="问题排查过程"></a>问题排查过程</h4><p>了解了镜像相关的知识，我们来看看这个问题的排查过程。首先我们观察用户的容器，经过简化和打码目录结构如下，其中目录 modules 就是事故多发地。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">/data</span><br><span class="line">└── prom</span><br><span class="line">    ├── bin</span><br><span class="line">    └── modules</span><br><span class="line">        ├── file</span><br><span class="line">        └── lib/</span><br></pre></td></tr></table></figure>
+<p>再观察下用户的镜像的各个层。我们把镜像的层按照从下往上用递增的 ID 来标注，对这个目录有修改的有 5099、5101、5102、5103、5104 这几层。把容器运行起来后，看到的 modules 目录和 <strong>5104</strong> 提供的一样。并没有把 5103 等“下面”的镜像合并起来，相当于 <strong>5104</strong> 把下面的目录都覆盖掉了（当然，<strong>5104</strong> 和 <strong>5103</strong> 文件是有区别的）。</p>
+<h5 id="5104-下层目录为何被覆盖？"><a href="#5104-下层目录为何被覆盖？" class="headerlink" title="5104 下层目录为何被覆盖？"></a>5104 下层目录为何被覆盖？</h5><p>看到这里，首先想到是不是创建容器的 rootfs 时参数出现了问题，导致少 mount 了一些层？于是模拟手动挂载mount -t overlay overlay -o lowerdir=5104:5103 point把最上两层挂载，结果 <strong>5104</strong> 依然把 <strong>5103</strong> 覆盖了。这里推断可能是存在 overlay 的 .wh. 文件，于是尝试在这两层中搜 .wh. 文件，无果。于是去查 overlayfs 的文档：</p>
+<blockquote>
+<p>A directory is made opaque by setting the xattr “trusted.overlay.opaque”<br>to “y”.  Where the upper filesystem contains an opaque directory, any<br>directory in the lower filesystem with the same name is ignored.</p>
+</blockquote>
+<p>设置了属性 trusted.overlay.opaque=y 的目录会变成“不透明”的，当上层文件系统被设置为“不透明”时，下层中同名的目录会被忽略。overlay 如果想要在上层把下层覆盖掉，就需要设置这个属性。</p>
+<p>通过命令getfattr -n “trusted.overlay.opaque” dir查看发现，<strong>5104</strong> 下面的 /data/asr_offline/modules 果然带有这个属性，这一现象也进而导致了下层目录被“覆盖”。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[root@]$ getfattr -n <span class="string">"trusted.overlay.opaque"</span> 5104/fs/data/asr_offline/modules</span><br><span class="line"><span class="comment"># file: 5102/fs/data/asr_offline/modules</span></span><br><span class="line">trusted.overlay.opaque=<span class="string">"y"</span></span><br></pre></td></tr></table></figure>
+<p>一波多折，层层追究<br>那么问题来了，为什么只有特定的发行版会出现这个现象？我们尝试在 ubuntu 拉下镜像，发现“同源”目录居然没有设置 opaque！由于镜像的层通过把源文件解压和解包生成的，我们决定在确保不同操作系统中的“镜像源文件”的 md5 相同之后，在各个操作系统上把镜像源文件通过tar -zxf进行解包并重新手动挂载，发现 <strong>5104</strong> 均不会把 <strong>5103</strong> 覆盖。</p>
+<p>根据以上现象推断，可能是某些发行版下的 containerd 从 content 读取 tar 包并解压制作 snapshot 的 layer 时出现问题，错误地把 snapshot 的目录设置上了这个属性。</p>
+<p>为验证该推断，决定进行源代码梳理，由此发现了其中的疑点（相关代码如下）——生成 layers 时遍历 tar 包会读取每个文件的 PAXRecords 并且把这个设置在文件的 xattr 上（ tar 包给每个文件都准备了 PAXRecords，和 Pod 的 labels 等价）。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">applyNaive</span><span class="params">()</span></span> &#123;</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  <span class="keyword">for</span> k, v := <span class="keyword">range</span> tar_file.PAXRecords &#123;</span><br><span class="line">		setxattr(real_file, k, v)</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">setxattr</span><span class="params">(path, key, value <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> unix.Lsetxattr(path, key, []<span class="keyword">byte</span>(value), <span class="number">0</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因为之前实验过 v1.3 的 containerd 不会出现这个问题，所以对照了下两者的代码，发现两者从 tar 包中抽取 PAXRecords 设置 xattr 的逻辑两者是不一样的。v1.3 的代码如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">setxattr</span><span class="params">(path, key, value <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// Do not set trusted attributes</span></span><br><span class="line">	<span class="keyword">if</span> strings.HasPrefix(key, <span class="string">"trusted."</span>) &#123;</span><br><span class="line">		<span class="keyword">return</span> errors.Wrap(unix.ENOTSUP, <span class="string">"admin attributes from archive not supported"</span>)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> unix.Lsetxattr(path, key, []<span class="keyword">byte</span>(value), <span class="number">0</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>也就是说 v1.3.0 中不会设置以trusted.开头的 xattr！如果 tar 包中某目录带有trusted.overlay.opaque=y这个 PAX，低版本的 containerd 可能就会把这些属性设置到 snapshot 的目录上，而高版本的却不会。那么，当用户在打包时，如果把 opaque 也打到 tar 包中，解压得到的 layer 对应目录也就会带有这个属性。<strong>5104</strong> 这个目录可能就是这个原因才变成 opaque 的。</p>
+<p>为了验证这个观点，我写了一段简单的程序来扫描与 layer 对应的 content 来寻找这个属性，结果发现 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 几个层都没有这个属性。这时我也开始怀疑这个观点了，毕竟如果只是 tar 包中有特别的标识，应该不会在不同的操作系统表现不同。</p>
+<p>抱着最后一丝希望扫描了 <strong>5099</strong> 和 <strong>5101</strong>，果然也并没有这个属性。但在扫描的过程中，注意到 <strong>5101</strong> 的 tar 包里存在 /data/asr_offline/modules/.wh..wh.opq 这个文件。记得当时看代码 applyNaive 时如果遇到了 .wh..wh.opq 对应的操作应该是在挂载点删除 /data/asr_offline/modules，而在 overlay 中删除 lower 目录会给 upper 同名目录加上trusted.overlay.opaque=y。也就是说，在生成 layer <strong>5101</strong> 时（需要提前挂载好 <strong>5100</strong> 和 <strong>5099</strong>），遍历 tar 包遇到了这个 wh 文件，应该先在挂载点删除 modules，也就是会在 <strong>5101</strong> 对应目录加上 opaque=y。</p>
+<p>再次以验证源代码成果的心态，去 snapshot 的 5101/fs 下查看目录 modules 的 opaque，果然和想象的一样。这些文件应该都是在 lower层，所以对应的 overlayfs 的操作应该是在 upper 也就是 <strong>5101</strong> 层的 /data/asr_offline/modules 目录设置trusted.overlay.opaque=y。去查看 <strong>5101</strong> 的这个目录，果然带有这个属性，好奇心驱使着我继续查看了 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 这几层的目录，发现居然都有这个属性。</p>
+<p>也就是这些 layer 每个都会把下面的覆盖掉？这好像不符合常理。于是，去表现正常的 ubuntu 中查看，发现只有 <strong>5101</strong> 有这个属性。经过反复确认 <strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 的 tar 包中的确没有目录 modules 的 whiteout 文件，也就是说镜像原本的意图就是让 <strong>5101</strong> 把下面的层覆盖掉，再把 <strong>5101</strong>、<strong>5102</strong>、<strong>5103</strong>、<strong>5104</strong> 这几层的 modules 目录 merge 起来。整个生成镜像的流程里，只有“借用”overlay 生成 snapshot 的 layer 会涉及到操作系统。</p>
+<h5 id="云开雾散，大胆猜探"><a href="#云开雾散，大胆猜探" class="headerlink" title="云开雾散，大胆猜探"></a>云开雾散，大胆猜探</h5><p>我们不妨大胆猜测一下，会不会像下图这样，在生成 layer <strong>5102</strong> 时，因为内核或 overlay 的 bug 把 modules 也添加了不透明的属性？</p>
+<p><img src="https://main.qcloudimg.com/raw/98362e7c7e20199f0a15ed99c0b86a1b.png" alt="enter image description here"></p>
+<p>为了对这个特性做单独的测试，写了个简单的脚本。运行脚本之后，果然发现在这个发行版中，如果 overlay 的低层目录有这个属性并且在 upper 层中创建了同样的目录，会把这个 opaque“传播”到 upper 层的目录中。如果像 containerd 那样递推生成镜像，肯定从有 whiteout 层开始上面的每一层都会具有这个属性，也就导致了最终容器在某些特定的目录只能看到最上面一层。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">`<span class="comment">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line">mkdir 1 2 work p</span><br><span class="line">mkdir 1/func</span><br><span class="line">touch 1/func/min</span><br><span class="line"></span><br><span class="line">mount -t overlay overlay p -o lowerdir=1,upperdir=2,workdir=work</span><br><span class="line">rm -rf p/func</span><br><span class="line">mkdir -p p/func</span><br><span class="line">touch p/func/max</span><br><span class="line">umount p</span><br><span class="line">getfattr -n <span class="string">"trusted.overlay.opaque"</span> 2/func</span><br><span class="line"></span><br><span class="line">mkdir 3</span><br><span class="line">mount -t overlay overlay p -o lowerdir=2:1,upperdir=3,workdir=work</span><br><span class="line">touch p/func/sqrt</span><br><span class="line">umount p</span><br><span class="line">getfattr -n <span class="string">"trusted.overlay.opaque"</span> 3/func`</span><br></pre></td></tr></table></figure>
+<h3 id="最终总结"><a href="#最终总结" class="headerlink" title="最终总结"></a>最终总结</h3><p>在几个内核大佬的帮助下，确认了是内核 overlayfs 模块的 bug。在 lower 层调用 copy_up 时并没有检测 xattr，从而导致 opaque 这个 xattr 传播到了 upper 层。做联合挂载时，如果上层的文件得到了这个属性，自然会把下层文件覆盖掉，也就出现了镜像中丢失文件的现象。反思整个排查过程，其实很难在一开始就把问题定位到内核的某个模块上，好在可以另辟蹊径通过测试和阅读源码逐步逼近“真相”，成功寻得解决方案。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/08/containerd-image-file-loss/" data-id="ckahkyzhu0008atu53t6339um" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-k8s-configmap-volume" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2020/04/24/k8s-configmap-volume/" class="article-date">
@@ -135,7 +510,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ckac7jvru000ddfoj0lt4ip74" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ckahkyzi4000fatu5dfdi4ls8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -295,7 +670,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ckac7jvre0004dfoj9jcl53rd" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ckahkyzhq0005atu5mvtwxylv" class="article-share-link">Share</a>
       
       
     </footer>
@@ -385,7 +760,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/" data-id="ckac7jvrc0003dfoj2u7wp6a6" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/" data-id="ckahkyzhp0004atu5bs1zbj0w" class="article-share-link">Share</a>
       
       
     </footer>
@@ -458,7 +833,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ckac7jvr90002dfoj3r0s0bb1" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ckahkyzho0003atu543yajfjg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -626,7 +1001,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ckac7jvs0000jdfojy2i5yvgn" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ckahkyzia000latu5eyxs4dpa" class="article-share-link">Share</a>
       
       
     </footer>
@@ -704,7 +1079,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ckac7jvs3000mdfojspms4unt" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ckahkyzic000oatu5jumasb4u" class="article-share-link">Share</a>
       
       
     </footer>
@@ -807,7 +1182,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ckac7jvs6000pdfojld4ymiri" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ckahkyzie000ratu5bvk7h3lh" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1078,110 +1453,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ckac7jvsg000rdfojblrktctp" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-pod-terminating-forever" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/06/20/pod-terminating-forever/" class="article-date">
-  <time datetime="2019-06-20T12:35:00.000Z" itemprop="datePublished">2019-06-20</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/06/20/pod-terminating-forever/">Kubernetes 问题排查：Pod 状态一直 Terminating</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<p>查看 Pod 事件:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ kubectl describe pod/apigateway-6dc48bf8b6-clcwk -n cn-staging</span><br></pre></td></tr></table></figure>
-<h3 id="Need-to-kill-Pod"><a href="#Need-to-kill-Pod" class="headerlink" title="Need to kill Pod"></a>Need to kill Pod</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Normal  Killing  39s (x735 over 15h)  kubelet, 10.179.80.31  Killing container with id docker://apigateway:Need to <span class="built_in">kill</span> Pod</span><br></pre></td></tr></table></figure>
-<p>可能是磁盘满了，无法创建和删除 pod</p>
-<p>处理建议是参考Kubernetes 最佳实践：<a href="https://tencentcloudcontainerteam.github.io/2019/06/08/kubernetes-best-practice-handle-disk-full/">处理容器数据磁盘被写满</a></p>
-<h3 id="DeadlineExceeded"><a href="#DeadlineExceeded" class="headerlink" title="DeadlineExceeded"></a>DeadlineExceeded</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Warning FailedSync 3m (x408 over 1h) kubelet, 10.179.80.31 error determining status: rpc error: code = DeadlineExceeded desc = context deadline exceeded</span><br></pre></td></tr></table></figure>
-<p>怀疑是17版本dockerd的BUG。可通过 <code>kubectl -n cn-staging delete pod apigateway-6dc48bf8b6-clcwk --force --grace-period=0</code> 强制删除pod，但 <code>docker ps</code> 仍看得到这个容器</p>
-<p>处置建议：</p>
-<ul>
-<li>升级到docker 18. 该版本使用了新的 containerd，针对很多bug进行了修复。</li>
-<li>如果出现terminating状态的话，可以提供让容器专家进行排查，不建议直接强行删除，会可能导致一些业务上问题。</li>
-</ul>
-<h3 id="存在-Finalizers"><a href="#存在-Finalizers" class="headerlink" title="存在 Finalizers"></a>存在 Finalizers</h3><p>k8s 资源的 metadata 里如果存在 <code>finalizers</code>，那么该资源一般是由某程序创建的，并且在其创建的资源的 metadata 里的 <code>finalizers</code> 加了一个它的标识，这意味着这个资源被删除时需要由创建资源的程序来做删除前的清理，清理完了它需要将标识从该资源的 <code>finalizers</code> 中移除，然后才会最终彻底删除资源。比如 Rancher 创建的一些资源就会写入 <code>finalizers</code> 标识。</p>
-<p>处理建议：<code>kubectl edit</code> 手动编辑资源定义，删掉 <code>finalizers</code>，这时再看下资源，就会发现已经删掉了</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/20/pod-terminating-forever/" data-id="ckac7jvs4000ndfojb8888o3r" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-lost-packets-once-enable-tcp-tw-recycle" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" class="article-date">
-  <time datetime="2019-06-09T14:00:00.000Z" itemprop="datePublished">2019-06-09</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/">Kubernetes 踩坑分享：开启tcp_tw_recycle内核参数在NAT环境会丢包</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<h2 id="原因"><a href="#原因" class="headerlink" title="原因"></a>原因</h2><p>tcp_tw_recycle 参数，它用来快速回收 TIME_WAIT 连接，不过如果在 NAT 环境下会引发问题。 RFC1323 中有如下一段描述：</p>
-<p><code>An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connection. This value could then be used in the PAWS mechanism to reject old duplicate segments from earlier incarnations of the connection, if the timestamp clock can be guaranteed to have ticked at least once since the old connection was open. This would require that the TIME-WAIT delay plus the RTT together must be at least one tick of the sender’s timestamp clock. Such an extension is not part of the proposal of this RFC.</code></p>
-<ul>
-<li><p>大概意思是说TCP有一种行为，可以缓存每个连接最新的时间戳，后续请求中如果时间戳小于缓存的时间戳，即视为无效，相应的数据包会被丢弃。</p>
-</li>
-<li><p>Linux是否启用这种行为取决于tcp_timestamps和tcp_tw_recycle，因为tcp_timestamps缺省就是开启的，所以当tcp_tw_recycle被开启后，实际上这种行为就被激活了，当客户端或服务端以NAT方式构建的时候就可能出现问题，下面以客户端NAT为例来说明：</p>
-</li>
-<li><p>当多个客户端通过NAT方式联网并与服务端交互时，服务端看到的是同一个IP，也就是说对服务端而言这些客户端实际上等同于一个，可惜由于这些客户端的时间戳可能存在差异，于是乎从服务端的视角看，便可能出现时间戳错乱的现象，进而直接导致时间戳小的数据包被丢弃。如果发生了此类问题，具体的表现通常是是客户端明明发送的SYN，但服务端就是不响应ACK。</p>
-</li>
-<li><p>在4.12之后的内核已移除tcp_tw_recycle内核参数: <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=4396e46187ca5070219b81773c4e65088dac50cc</a> <a href="https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc</a></p>
-</li>
-</ul>
-<h2 id="TKE中-使用-NAT-的场景"><a href="#TKE中-使用-NAT-的场景" class="headerlink" title="TKE中 使用 NAT 的场景"></a>TKE中 使用 NAT 的场景</h2><ul>
-<li>跨 VPC 访问(通过对等连接、云联网、专线等方式打通)，会做 SNAT</li>
-</ul>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/06/09/lost-packets-once-enable-tcp-tw-recycle/" data-id="ckac7jvs2000ldfojxd4jly5q" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ckahkyzig000tatu5ly5pfv20" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1195,7 +1467,7 @@
 
   <nav id="page-nav">
     
-    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="page-number" href="/page/3/">3</a><a class="extend next" rel="next" href="/page/2/">Next &raquo;</a>
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="page-number" href="/page/3/">3</a><a class="page-number" href="/page/4/">4</a><a class="extend next" rel="next" href="/page/2/">Next &raquo;</a>
   </nav>
 
 </section>
@@ -1214,7 +1486,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -1227,6 +1499,14 @@
       <ul>
         
           <li>
+            <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
+          </li>
+        
+          <li>
+            <a href="/2020/05/08/containerd-image-file-loss/">揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸</a>
+          </li>
+        
+          <li>
             <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
           </li>
         
@@ -1236,14 +1516,6 @@
         
           <li>
             <a href="/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
-          </li>
-        
-          <li>
-            <a href="/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/">打造云原生大型分布式监控系统(一): 大规模场景下 Prometheus 的优化手段</a>
-          </li>
-        
-          <li>
-            <a href="/2020/01/13/kubernetes-overflow-and-drop/">Kubernetes 疑难杂症排查分享：神秘的溢出与丢包</a>
           </li>
         
       </ul>
