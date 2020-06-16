@@ -18,7 +18,7 @@
 <meta property="og:image" content="https://main.qcloudimg.com/raw/e502a73a01436daa323e6747ae151b67.png">
 <meta property="og:image" content="https://main.qcloudimg.com/raw/376e655665a8738810a78370f9bd3bee.png">
 <meta property="og:image" content="https://main.qcloudimg.com/raw/9acf4b3722150ca3c315e19cd0b17132.png">
-<meta property="og:updated_time" content="2020-05-22T02:23:57.356Z">
+<meta property="og:updated_time" content="2020-06-16T01:53:49.335Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="揭秘 Kubernetes attach&#x2F;detach controller 逻辑漏洞致使 pod 启动失败">
 <meta name="twitter:description" content="作者： 蔡靖 前言本文主要通过深入学习k8s attach/detach controller源码，了解现网案例发现的attach/detach controller bug发生的原委，并给出解决方案。 看完本文你也将学习到：  attach/detach controller的主要数据结构有哪些，保存什么数据，数据从哪来，到哪去等等； k8s attach/detach volume的详细流程，">
@@ -327,7 +327,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/13/K8s-ad-controller-bug/" data-id="ckahkyzhl0001atu55r3qar8p" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/13/K8s-ad-controller-bug/" data-id="ckbh9wi970001agr8ps4dcpxg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -335,6 +335,15 @@
   
     
 <nav id="article-nav">
+  
+    <a href="/2020/06/16/tke-cluster-setup-best-practice/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          TKE 集群组建最佳实践
+        
+      </div>
+    </a>
   
   
     <a href="/2020/05/08/containerd-image-file-loss/" id="article-nav-older" class="article-nav-link-wrap">
@@ -363,7 +372,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/06/">六月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -376,6 +385,14 @@
       <ul>
         
           <li>
+            <a href="/2020/06/16/kubernetes-app-deployment-best-practice-1/">Kubernetes 服务部署最佳实践(一)</a>
+          </li>
+        
+          <li>
+            <a href="/2020/06/16/tke-cluster-setup-best-practice/">TKE 集群组建最佳实践</a>
+          </li>
+        
+          <li>
             <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
           </li>
         
@@ -385,14 +402,6 @@
         
           <li>
             <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
-          </li>
-        
-          <li>
-            <a href="/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
-          </li>
-        
-          <li>
-            <a href="/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
           </li>
         
       </ul>

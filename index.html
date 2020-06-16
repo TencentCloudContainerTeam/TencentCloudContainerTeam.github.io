@@ -63,6 +63,260 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-kubernetes-app-deployment-best-practice-1" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/06/16/kubernetes-app-deployment-best-practice-1/" class="article-date">
+  <time datetime="2020-06-16T01:50:00.000Z" itemprop="datePublished">2020-06-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/06/16/kubernetes-app-deployment-best-practice-1/">Kubernetes 服务部署最佳实践(一)</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h2 id="作者-陈鹏"><a href="#作者-陈鹏" class="headerlink" title="作者: 陈鹏"></a>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></h2><h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>业务容器化后，如何将其部署在 K8S 上？如果仅仅是将它跑起来，很简单，但如果是上生产，我们有许多地方是需要结合业务场景和部署环境进行方案选型和配置调优的。比如，如何设置容器的 Request 与 Limit、如何让部署的服务做到高可用、如何配置健康检查、如何进行弹性伸缩、如何更好的进行资源调度、如何选择持久化存储、如何对外暴露服务等。</p>
+<p>对于这一系列高频问题，这里将会出一个 Kubernetes 服务部署最佳实践的系列的文章来为大家一一作答，本文将先围绕如何合理利用资源的主题来进行探讨。</p>
+<h2 id="Request-与-Limit-怎么设置才好"><a href="#Request-与-Limit-怎么设置才好" class="headerlink" title="Request 与 Limit 怎么设置才好"></a>Request 与 Limit 怎么设置才好</h2><p>如何为容器配置 Request 与 Limit? 这是一个即常见又棘手的问题，这个根据服务类型，需求与场景的不同而不同，没有固定的答案，这里结合生产经验总结了一些最佳实践，可以作为参考。</p>
+<h3 id="所有容器都应该设置-request"><a href="#所有容器都应该设置-request" class="headerlink" title="所有容器都应该设置 request"></a>所有容器都应该设置 request</h3><p>request 的值并不是指给容器实际分配的资源大小，它仅仅是给调度器看的，调度器会 “观察” 每个节点可以用于分配的资源有多少，也知道每个节点已经被分配了多少资源。被分配资源的大小就是节点上所有 Pod 中定义的容器 request 之和，它可以计算出节点剩余多少资源可以被分配(可分配资源减去已分配的 request 之和)。如果发现节点剩余可分配资源大小比当前要被调度的 Pod 的 reuqest 还小，那么就不会考虑调度到这个节点，反之，才可能调度。所以，如果不配置 request，那么调度器就不能知道节点大概被分配了多少资源出去，调度器得不到准确信息，也就无法做出合理的调度决策，很容易造成调度不合理，有些节点可能很闲，而有些节点可能很忙，甚至 NotReady。</p>
+<p>所以，建议是给所有容器都设置 request，让调度器感知节点有多少资源被分配了，以便做出合理的调度决策，让集群节点的资源能够被合理的分配使用，避免陷入资源分配不均导致一些意外发生。</p>
+<h3 id="老是忘记设置怎么办"><a href="#老是忘记设置怎么办" class="headerlink" title="老是忘记设置怎么办"></a>老是忘记设置怎么办</h3><p>有时候我们会忘记给部分容器设置 request 与 limit，其实我们可以使用 LimitRange 来设置 namespace 的默认 request 与 limit 值，同时它也可以用来限制最小和最大的 request 与 limit。<br>示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">LimitRange</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">mem-limit-range</span></span><br><span class="line"><span class="attr">  namespace:</span> <span class="string">test</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  limits:</span></span><br><span class="line"><span class="attr">  - default:</span></span><br><span class="line"><span class="attr">      memory:</span> <span class="number">512</span><span class="string">Mi</span></span><br><span class="line">	  <span class="attr">cpu:</span> <span class="number">500</span><span class="string">m</span></span><br><span class="line"><span class="attr">    defaultRequest:</span></span><br><span class="line"><span class="attr">      memory:</span> <span class="number">256</span><span class="string">Mi</span></span><br><span class="line">	  <span class="attr">cpu:</span> <span class="number">100</span><span class="string">m</span></span><br><span class="line"><span class="attr">    type:</span> <span class="string">Container</span></span><br></pre></td></tr></table></figure>
+<h3 id="重要的线上应用改如何设置"><a href="#重要的线上应用改如何设置" class="headerlink" title="重要的线上应用改如何设置"></a>重要的线上应用改如何设置</h3><p>节点资源不足时，会触发自动驱逐，将一些低优先级的 Pod 删除掉以释放资源让节点自愈。没有设置 request，limit 的 Pod 优先级最低，容易被驱逐；request 不等于 limit 的其次； request 等于 limit 的 Pod 优先级较高，不容易被驱逐。所以如果是重要的线上应用，不希望在节点故障时被驱逐导致线上业务受影响，就建议将 request 和 limit 设成一致。</p>
+<h3 id="怎样设置才能提高资源利用率"><a href="#怎样设置才能提高资源利用率" class="headerlink" title="怎样设置才能提高资源利用率"></a>怎样设置才能提高资源利用率</h3><p>如果给给你的应用设置较高的 request 值，而实际占用资源长期远小于它的 request 值，导致节点整体的资源利用率较低。当然这对时延非常敏感的业务除外，因为敏感的业务本身不期望节点利用率过高，影响网络包收发速度。所以对一些非核心，并且资源不长期占用的应用，可以适当减少 request 以提高资源利用率。</p>
+<p>如果你的服务支持水平扩容，单副本的 request 值一般可以设置到不大于 1 核，CPU 密集型应用除外。比如 coredns，设置到 0.1 核就可以，即 100m。</p>
+<h3 id="尽量避免使用过大的-request-与-limit"><a href="#尽量避免使用过大的-request-与-limit" class="headerlink" title="尽量避免使用过大的 request 与 limit"></a>尽量避免使用过大的 request 与 limit</h3><p>如果你的服务使用单副本或者少量副本，给很大的 request 与 limit，让它分配到足够多的资源来支撑业务，那么某个副本故障对业务带来的影响可能就比较大，并且由于 request 较大，当集群内资源分配比较碎片化，如果这个 Pod 所在节点挂了，其它节点又没有一个有足够的剩余可分配资源能够满足这个 Pod 的 request 时，这个 Pod 就无法实现漂移，也就不能自愈，加重对业务的影响。</p>
+<p>相反，建议尽量减小 request 与 limit，通过增加副本的方式来对你的服务支撑能力进行水平扩容，让你的系统更加灵活可靠。</p>
+<h3 id="避免测试-namespace-消耗过多资源影响生产业务"><a href="#避免测试-namespace-消耗过多资源影响生产业务" class="headerlink" title="避免测试 namespace 消耗过多资源影响生产业务"></a>避免测试 namespace 消耗过多资源影响生产业务</h3><p>若生产集群有用于测试的 namespace，如果不加以限制，可能导致集群负载过高，从而影响生产业务。可以使用 ResourceQuota 来限制测试 namespace 的 request 与 limit 的总大小。<br>示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">ResourceQuota</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">quota-test</span></span><br><span class="line"><span class="attr">  namespace:</span> <span class="string">test</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  hard:</span></span><br><span class="line">    <span class="string">requests.cpu:</span> <span class="string">"1"</span></span><br><span class="line">    <span class="string">requests.memory:</span> <span class="number">1</span><span class="string">Gi</span></span><br><span class="line">    <span class="string">limits.cpu:</span> <span class="string">"2"</span></span><br><span class="line">    <span class="string">limits.memory:</span> <span class="number">2</span><span class="string">Gi</span></span><br></pre></td></tr></table></figure>
+<h2 id="如何让资源得到更合理的分配"><a href="#如何让资源得到更合理的分配" class="headerlink" title="如何让资源得到更合理的分配"></a>如何让资源得到更合理的分配</h2><p>设置 Request 能够解决让 Pod 调度到有足够资源的节点上，但无法做到更细致的控制。如何进一步让资源得到合理的使用？我们可以结合亲和性、污点与容忍等高级调度技巧，让 Pod 能够被合理调度到合适的节点上，让资源得到充分的利用。</p>
+<h3 id="使用亲和性"><a href="#使用亲和性" class="headerlink" title="使用亲和性"></a>使用亲和性</h3><ul>
+<li>对节点有特殊要求的服务可以用节点亲和性 (Node Affinity) 部署，以便调度到符合要求的节点，比如让 MySQL 调度到高 IO 的机型以提升数据读写效率。</li>
+<li>可以将需要离得比较近的有关联的服务用 Pod 亲和性 (Pod Affinity) 部署，比如让 Web 服务跟它的 Redis 缓存服务都部署在同一可用区，实现低延时。</li>
+<li>也可使用 Pod 反亲和 (Pod AntiAffinity) 将 Pod 进行打散调度，避免单点故障或者流量过于集中导致的一些问题。</li>
+</ul>
+<h3 id="使用污点与容忍"><a href="#使用污点与容忍" class="headerlink" title="使用污点与容忍"></a>使用污点与容忍</h3><p>使用污点 (Taint) 与容忍 (Toleration) 可优化集群资源调度:</p>
+<ul>
+<li>通过给节点打污点来给某些应用预留资源，避免其它 Pod 调度上来。</li>
+<li>需要使用这些资源的 Pod 加上容忍，结合节点亲和性让它调度到预留节点，即可使用预留的资源。</li>
+</ul>
+<h2 id="弹性伸缩"><a href="#弹性伸缩" class="headerlink" title="弹性伸缩"></a>弹性伸缩</h2><h3 id="如何支持流量突发型业务"><a href="#如何支持流量突发型业务" class="headerlink" title="如何支持流量突发型业务"></a>如何支持流量突发型业务</h3><p>通常业务都会有高峰和低谷，为了更合理的利用资源，我们为服务定义 HPA，实现根据 Pod 的资源实际使用情况来对服务进行自动扩缩容，在业务高峰时自动扩容 Pod 数量来支撑服务，在业务低谷时，自动缩容 Pod 释放资源，以供其它服务使用（比如在夜间，线上业务低峰，自动缩容释放资源以供大数据之类的离线任务运行) 。</p>
+<p>使用 HPA 前提是让 K8S 得知道你服务的实际资源占用情况(指标数据)，需要安装 resource metrics (metrics.k8s.io) 或 custom metrics (custom.metrics.k8s.io) 的实现，好让 hpa controller 查询这些 API 来获取到服务的资源占用情况。早期 HPA 用 resource metrics 获取指标数据，后来推出 custom metrics，可以实现更灵活的指标来控制扩缩容。官方有个叫 <a href="https://github.com/kubernetes-sigs/metrics-server" target="_blank" rel="noopener">metrics-server</a> 的实现，通常社区使用的更多的是基于 prometheus 的 实现 <a href="https://github.com/DirectXMan12/k8s-prometheus-adapter" target="_blank" rel="noopener">prometheus-adapter</a>，而云厂商托管的 K8S 集群通常集成了自己的实现，比如 TKE，实现了 CPU、内存、硬盘、网络等维度的指标，可以在网页控制台可视化创建 HPA，但最终都会转成 K8S 的 yaml，示例:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">autoscaling/v2beta2</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">HorizontalPodAutoscaler</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  scaleTargetRef:</span></span><br><span class="line"><span class="attr">    apiVersion:</span> <span class="string">apps/v1beta2</span></span><br><span class="line"><span class="attr">    kind:</span> <span class="string">Deployment</span></span><br><span class="line"><span class="attr">    name:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">  minReplicas:</span> <span class="number">1</span></span><br><span class="line"><span class="attr">  maxReplicas:</span> <span class="number">10</span></span><br><span class="line"><span class="attr">  metrics:</span></span><br><span class="line"><span class="attr">  - type:</span> <span class="string">Pods</span></span><br><span class="line"><span class="attr">    pods:</span></span><br><span class="line"><span class="attr">      metric:</span></span><br><span class="line"><span class="attr">        name:</span> <span class="string">k8s_pod_rate_cpu_core_used_request</span></span><br><span class="line"><span class="attr">      target:</span></span><br><span class="line"><span class="attr">        averageValue:</span> <span class="string">"100"</span></span><br><span class="line"><span class="attr">        type:</span> <span class="string">AverageValue</span></span><br></pre></td></tr></table></figure>
+<h3 id="如何节约成本"><a href="#如何节约成本" class="headerlink" title="如何节约成本"></a>如何节约成本</h3><p>HPA 能实现 Pod 水平扩缩容，但如果节点资源不够用了，Pod 扩容出来还是会 Pending。如果我们提前准备好大量节点，做好资源冗余，提前准备好大量节点，通常不会有 Pod Pending 的问题，但也意味着需要付出更高的成本。通常云厂商托管的 K8S 集群都会实现 <a href="https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler" target="_blank" rel="noopener">cluster-autoscaler</a>，即根据资源使用情况，动态增删节点，让计算资源能够被最大化的弹性使用，按量付费，以节约成本。在 TKE 上的实现叫做伸缩组，以及一个包含伸缩功能组但更高级的特性：节点池(正在灰度)</p>
+<h3 id="无法水平扩容的服务怎么办"><a href="#无法水平扩容的服务怎么办" class="headerlink" title="无法水平扩容的服务怎么办"></a>无法水平扩容的服务怎么办</h3><p>对于无法适配水平伸缩的单体应用，或者不确定最佳 request 与 limit 超卖比的应用，可以尝用 <a href="https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler" target="_blank" rel="noopener">VPA</a> 来进行垂直伸缩，即自动更新 request 与 limit，然后重启 pod。不过这个特性容易导致你的服务出现短暂的不可用，不建议在生产环境中大规模使用。</p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li>Understanding Kubernetes limits and requests by example: <a href="https://sysdig.com/blog/kubernetes-limits-requests/" target="_blank" rel="noopener">https://sysdig.com/blog/kubernetes-limits-requests/</a></li>
+<li>Understanding resource limits in kubernetes: cpu time: <a href="https://medium.com/@betz.mark/understanding-resource-limits-in-kubernetes-cpu-time-9eff74d3161b" target="_blank" rel="noopener">https://medium.com/@betz.mark/understanding-resource-limits-in-kubernetes-cpu-time-9eff74d3161b</a></li>
+<li>Understanding resource limits in kubernetes: memory: <a href="https://medium.com/@betz.mark/understanding-resource-limits-in-kubernetes-memory-6b41e9a955f9" target="_blank" rel="noopener">https://medium.com/@betz.mark/understanding-resource-limits-in-kubernetes-memory-6b41e9a955f9</a></li>
+<li>Kubernetes best practices: Resource requests and limits: <a href="https://cloud.google.com/blog/products/gcp/kubernetes-best-practices-resource-requests-and-limits" target="_blank" rel="noopener">https://cloud.google.com/blog/products/gcp/kubernetes-best-practices-resource-requests-and-limits</a></li>
+<li>Kubernetes 资源分配之 Request 和 Limit 解析: <a href="https://cloud.tencent.com/developer/article/1004976" target="_blank" rel="noopener">https://cloud.tencent.com/developer/article/1004976</a></li>
+<li>Assign Pods to Nodes using Node Affinity: <a href="https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/" target="_blank" rel="noopener">https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/</a></li>
+<li>Taints and Tolerations: <a href="https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/</a></li>
+<li>metrics-server: <a href="https://github.com/kubernetes-sigs/metrics-server" target="_blank" rel="noopener">https://github.com/kubernetes-sigs/metrics-server</a></li>
+<li>prometheus-adapter: <a href="https://github.com/DirectXMan12/k8s-prometheus-adapter" target="_blank" rel="noopener">https://github.com/DirectXMan12/k8s-prometheus-adapter</a></li>
+<li>cluster-autoscaler: <a href="https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler" target="_blank" rel="noopener">https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler</a></li>
+<li>VPA: <a href="https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler" target="_blank" rel="noopener">https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler</a></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/06/16/kubernetes-app-deployment-best-practice-1/" data-id="ckbh9wia1000jagr87h7t0zs4" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
+    <article id="post-tke-cluster-setup-best-practice" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/06/16/tke-cluster-setup-best-practice/" class="article-date">
+  <time datetime="2020-06-16T01:00:00.000Z" itemprop="datePublished">2020-06-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2020/06/16/tke-cluster-setup-best-practice/">TKE 集群组建最佳实践</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="Kubernetes-版本"><a href="#Kubernetes-版本" class="headerlink" title="Kubernetes 版本"></a>Kubernetes 版本</h2><p>K8S 版本迭代比较快，新版本通常包含许多 bug 修复和新功能，旧版本逐渐淘汰，建议创建集群时选择当前 TKE 支持的最新版本，后续出新版本后也是可以支持 Master 和 节点的版本升级的。</p>
+<h2 id="网络模式-GlobalRouter-vs-VPC-CNI"><a href="#网络模式-GlobalRouter-vs-VPC-CNI" class="headerlink" title="网络模式: GlobalRouter vs VPC-CNI"></a>网络模式: GlobalRouter vs VPC-CNI</h2><p><strong>GlobalRouter 模式架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router.jpg" alt=""></p>
+<ul>
+<li>基于 CNI 和 网桥实现的容器网络能力，容器路由直接通过 VPC 底层实现</li>
+<li>容器与节点在同一网络平面，但网段不与 VPC 网段重叠，容器网段地址充裕 </li>
+</ul>
+<p><strong>VPC-CNI 模式架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/vpc-cni.jpg" alt=""></p>
+<ul>
+<li>基于 CNI 和 VPC 弹性网卡实现的容器网络能力，容器路由通过弹性网卡，性能相比 Global Router 约提高 10%</li>
+<li>容器与节点在同一网络平面，网段在 VPC 网段内</li>
+<li>支持 Pod 固定 IP</li>
+</ul>
+<p><strong>对比:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router-vs-vpc-cni.jpg" alt=""></p>
+<p><strong>支持三种使用方式:</strong></p>
+<ul>
+<li>创建集群时指定 GlobalRouter 模式</li>
+<li>创建集群时指定 VPC-CNI 模式，后续所有 Pod 都必须使用 VPC-CNI 模式创建</li>
+<li>创建集群时指定 GlobalRouter 模式，在需要使用 VPC-CNI 模式时为集群启用 VPC-CNI 的支持，即两种模式混用</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>绝大多数情况下应该选择 GlobalRouter，容器网段地址充裕，扩展性强，能适应规模较大的业务</li>
+<li>如果后期部分业务需要用到 VPC-CNI 模式，可以在 GlobalRouter 集群再开启 VPC-CNI 支持，也就是 GlobalRouter 与 VPC-CNI 混用，仅对部分业务使用 VPC-CNI 模式</li>
+<li>如果完全了解并接受 VPC-CNI 的各种限制，并且需要集群内所有 Pod 都用 VPC-CNI 模式，可以创建集群时选择 VPC-CNI 网络插件</li>
+</ul>
+<blockquote>
+<p>参考官方文档 《如何选择容器服务网络模式》: <a href="https://cloud.tencent.com/document/product/457/41636" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/41636</a></p>
+</blockquote>
+<h2 id="运行时-Docker-vs-Containerd"><a href="#运行时-Docker-vs-Containerd" class="headerlink" title="运行时: Docker vs Containerd"></a>运行时: Docker vs Containerd</h2><p><strong>Docker 作为运行时的架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/docker-as-runtime.jpg" alt=""></p>
+<ul>
+<li>kubelet 内置的 dockershim 模块帮傲娇的 docker 适配了 CRI 接口，然后 kubelet 自己调自己的 dockershim (通过 socket 文件)，然后 dockershim 再调 dockerd 接口 (Docker HTTP API)，接着 dockerd 还要再调 docker-containerd (gRPC) 来实现容器的创建与销毁等。</li>
+<li>为什么调用链这么长？ K8S 一开始支持的就只是 Docker，后来引入了 CRI，将运行时抽象以支持多种运行时，而 Docker 跟 K8S 在一些方面有一定的竞争，不甘做小弟，也就没在 dockerd 层面实现 CRI 接口，所以 kubelet 为了让 dockerd 支持 CRI，就自己为 dockerd 实现了 CRI。docker 本身内部组件也模块化了，再加上一层 CRI 适配，调用链肯定就长了。</li>
+</ul>
+<p><strong>Containerd 作为运行时的架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/containerd-as-runtime.jpg" alt=""></p>
+<ul>
+<li>containerd 1.1 之后，支持 CRI Plugin，即 containerd 自身这里就可以适配 CRI 接口。</li>
+<li>相比 Docker 方案，调用链少了 dockershim 和 dockerd。</li>
+</ul>
+<p><strong>对比:</strong></p>
+<ul>
+<li>containerd 方案由于绕过了 dockerd，调用链更短，组件更少，占用节点资源更少，绕过了 dockerd 本身的一些 bug，但 containerd 自身也还存在一些 bug (已修复一些，灰度中)。</li>
+<li>docker 方案历史比较悠久，相对更成熟，支持 docker api，功能丰富，符合大多数人的使用习惯。</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>Docker 方案 相比 containerd 更成熟，如果对稳定性要求很高，建议 docker 方案</li>
+<li>以下场景只能使用 docker: <ul>
+<li>Docker in docker (通常在 CI 场景)</li>
+<li>节点上使用 docker 命令</li>
+<li>调用 docker API</li>
+</ul>
+</li>
+<li>没有以上场景建议使用 containerd</li>
+</ul>
+<blockquote>
+<p>参考官方文档 《如何选择 Containerd 和 Docker》: <a href="https://cloud.tencent.com/document/product/457/35747" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/35747</a></p>
+</blockquote>
+<h2 id="Service-转发模式-iptables-vs-ipvs"><a href="#Service-转发模式-iptables-vs-ipvs" class="headerlink" title="Service 转发模式: iptables vs ipvs"></a>Service 转发模式: iptables vs ipvs</h2><p>先看看 Service 的转发原理:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/service.jpg" alt=""></p>
+<ul>
+<li>节点上的 kube-proxy 组件 watch apiserver，获取 Service 与 Endpoint，转化成 iptables 或 ipvs 规则并写到节点上</li>
+<li>集群内的 client 去访问 Service (Cluster IP)，会被 iptable/ipvs 规则负载均衡到 Service 对应的后端 pod</li>
+</ul>
+<p><strong>对比:</strong></p>
+<ul>
+<li>ipvs 模式性能更高，但也存在一些已知未解决的 bug</li>
+<li>iptables 模式更成熟稳定</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>对稳定性要求极高且 service 数量小于 2000，选 iptables</li>
+<li>其余场景首选 ipvs</li>
+</ul>
+<h2 id="集群类型-托管集群-vs-独立集群"><a href="#集群类型-托管集群-vs-独立集群" class="headerlink" title="集群类型: 托管集群 vs 独立集群"></a>集群类型: 托管集群 vs 独立集群</h2><p><strong>托管集群:</strong></p>
+<ul>
+<li>Master 组件用户不可见，由腾讯云托管</li>
+<li>很多新功能也是会率先支持托管的集群</li>
+<li>Master 的计算资源会根据集群规模自动扩容</li>
+<li>用户不需要为 Master 付费</li>
+</ul>
+<p><strong>独立集群:</strong></p>
+<ul>
+<li>Master 组件用户可以完全掌控</li>
+<li>用户需要为 Master 付费购买机器</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>一般推荐托管集群</li>
+<li>如果希望能能够对 Master 完全掌控，可以使用独立集群 (比如对 Master 进行个性化定制实现高级功能)</li>
+</ul>
+<h2 id="节点操作系统"><a href="#节点操作系统" class="headerlink" title="节点操作系统"></a>节点操作系统</h2><p>TKE 主要支持 Ubuntu 和 CentOS 两类发行版，带 “TKE-Optimized” 后缀用的是 TKE 定制优化版的内核，其它的是 linux 社区官方开源内核:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/ubuntu.jpg" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/centos.jpg" alt=""></p>
+<p><strong>TKE-Optimized 的优势:</strong></p>
+<ul>
+<li>基于内核社区长期支持的 4.14.105 版本定制</li>
+<li>针对容器和云场景进行优化</li>
+<li>计算、存储和网络子系统均经过性能优化</li>
+<li>对内核缺陷修复支持较好</li>
+<li>完全开源： <a href="https://github.com/Tencent/TencentOS-kernel" target="_blank" rel="noopener">https://github.com/Tencent/TencentOS-kernel</a></li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>推荐 “TKE-Optimized”，稳定性和技术支持都比较好</li>
+<li>如果需要更高版本内核，选非 “TKE-Optimized” 版本的操作系统</li>
+</ul>
+<h2 id="节点池"><a href="#节点池" class="headerlink" title="节点池"></a>节点池</h2><p>此特性当前正在灰度中，可申请开白名单使用。主要可用于批量管理节点：</p>
+<ul>
+<li>节点 Label 与 Taint</li>
+<li>节点组件启动参数</li>
+<li>节点自定义启动脚本</li>
+<li>操作系统与运行时 (暂未支持)</li>
+</ul>
+<blockquote>
+<p>产品文档：<a href="https://cloud.tencent.com/document/product/457/43719" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/43719</a></p>
+</blockquote>
+<p><strong>适用场景:</strong></p>
+<ul>
+<li>异构节点分组管理，减少管理成本</li>
+<li>让集群更好支持复杂的调度规则 (Label, Taint)</li>
+<li>频繁扩缩容节点，减少操作成本</li>
+<li>节点日常维护(版本升级)</li>
+</ul>
+<p><strong>用法举例:</strong></p>
+<p>部分IO密集型业务需要高IO机型，为其创建一个节点池，配置机型并统一设置节点 Label 与 Taint，然后将 IO 密集型业务配置亲和性，选中 Label，使其调度到高 IO 机型的节点 (Taint 可以避免其它业务 Pod 调度上来)。</p>
+<p>随着时间的推移，业务量快速上升，该 IO 密集型业务也需要更多的计算资源，在业务高峰时段，HPA 功能自动为该业务扩容了 Pod，而节点计算资源不够用，这时节点池的自动伸缩功能自动扩容了节点，扛住了流量高峰。</p>
+<h2 id="启动脚本"><a href="#启动脚本" class="headerlink" title="启动脚本"></a>启动脚本</h2><p>添加节点时通过自定义数据配置节点启动脚本 (可用于修改组件启动参数、内核参数等):</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-script.jpg" alt=""></p>
+<h2 id="组件自定义参数"><a href="#组件自定义参数" class="headerlink" title="组件自定义参数"></a>组件自定义参数</h2><p>此特性当前也正在灰度中，可申请开白名单使用。</p>
+<p>创建集群时可自定义 Master 组件部分启动参数:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-master-parameter.jpg" alt=""></p>
+<p>添加节点时可自定义 kubelet 部分启动参数:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-kubelet-parameter.jpg" alt=""></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/06/16/tke-cluster-setup-best-practice/" data-id="ckbh9wiak000uagr8brxoy3a2" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+  
     <article id="post-K8s-ad-controller-bug" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2020/05/13/K8s-ad-controller-bug/" class="article-date">
@@ -321,7 +575,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/13/K8s-ad-controller-bug/" data-id="ckahkyzhl0001atu55r3qar8p" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/13/K8s-ad-controller-bug/" data-id="ckbh9wi970001agr8ps4dcpxg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -428,7 +682,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/08/containerd-image-file-loss/" data-id="ckahkyzhu0008atu53t6339um" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/05/08/containerd-image-file-loss/" data-id="ckbh9wi9l0008agr8o2nq3nj8" class="article-share-link">Share</a>
       
       
     </footer>
@@ -510,7 +764,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ckahkyzi4000fatu5dfdi4ls8" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/24/k8s-configmap-volume/" data-id="ckbh9wi9x000fagr8sopu6p2t" class="article-share-link">Share</a>
       
       
     </footer>
@@ -670,7 +924,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ckahkyzhq0005atu5mvtwxylv" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/" data-id="ckbh9wi9i0005agr86pev1nvg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -760,7 +1014,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/" data-id="ckahkyzhp0004atu5bs1zbj0w" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/" data-id="ckbh9wi9g0004agr8wdmutkdg" class="article-share-link">Share</a>
       
       
     </footer>
@@ -833,7 +1087,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ckahkyzho0003atu543yajfjg" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/03/27/build-cloud-native-large-scale-distributed-monitoring-system-1/" data-id="ckbh9wi9e0003agr8j71qade9" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1001,7 +1255,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ckahkyzia000latu5eyxs4dpa" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/01/13/kubernetes-overflow-and-drop/" data-id="ckbh9wia4000magr8q296tnwv" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1079,381 +1333,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ckahkyzic000oatu5jumasb4u" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-service-topology" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/11/26/service-topology/" class="article-date">
-  <time datetime="2019-11-26T08:18:00.000Z" itemprop="datePublished">2019-11-26</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/11/26/service-topology/">k8s v1.17 新特性预告: 拓扑感知服务路由</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<p>大家好，我是 roc，来自腾讯云容器服务(TKE)团队，今天给大家介绍下我参与开发的一个 k8s v1.17 新特性: 拓扑感知服务路由。</p>
-<h2 id="名词解释"><a href="#名词解释" class="headerlink" title="名词解释"></a>名词解释</h2><ul>
-<li>拓扑域: 表示在集群中的某一类 “地方”，比如某节点、某机架、某可用区或某地域等，这些都可以作为某种拓扑域。</li>
-<li>endpoint: k8s 某个服务的某个 ip+port，通常是 pod 的 ip+port。</li>
-<li>service: k8s 的 service 资源(服务)，关联一组 endpoint ，访问 service 会被转发到关联的某个 endpoint 上。</li>
-</ul>
-<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>拓扑感知服务路由，此特性最初由杜军大佬提出并设计。为什么要设计此特性呢？想象一下，k8s 集群节点分布在不同的地方，service 对应的 endpoints 分布在不同节点，传统转发策略会对所有 endpoint 做负载均衡，通常会等概率转发，当访问 service 时，流量就可能被分散打到这些不同的地方。虽然 service 转发做了负载均衡，但如果 endpoint 距离比较远，流量转发过去网络时延就相对比较高，会影响网络性能，在某些情况下甚至还可能会付出额外的流量费用。要是如能实现 service 就近转发 endpoint，是不是就可以实现降低网络时延，提升网络性能了呢？是的！这也正是该特性所提出的目的和意义。</p>
-<h2 id="k8s-亲和性"><a href="#k8s-亲和性" class="headerlink" title="k8s 亲和性"></a>k8s 亲和性</h2><p>service 的就近转发实际就是一种网络的亲和性，倾向于转发到离自己比较近的 endpoint。在此特性之前，已经在调度和存储方面有一些亲和性的设计与实现:</p>
-<ul>
-<li>节点亲和性 (Node Affinity): 让 Pod 被调度到符合一些期望条件的 Node 上，比如限制调度到某一可用区，或者要求节点支持 GPU，这算是调度亲和，调度结果取决于节点属性。</li>
-<li>Pod 亲和性与反亲和性 (Pod Affinity/AntiAffinity): 让一组 Pod 调度到同一拓扑域的节点上，或者打散到不同拓扑域的节点， 这也算是调度亲和，调度结果取决于其它 Pod。</li>
-<li>数据卷拓扑感知调度 (Volume Topology-aware Scheduling): 让 Pod 只被调度到符合其绑定的存储所在拓扑域的节点上，这算是调度与存储的亲和，调度结果取决于存储的拓扑域。</li>
-<li>本地数据卷 (Local Persistent Volume): 让 Pod 使用本地数据卷，比如高性能 SSD，在某些需要高 IOPS 低时延的场景很有用，它还会保证 Pod 始终被调度到同一节点，数据就不会不丢失，这也算是调度与存储的亲和，调度结果取决于存储所在节点。</li>
-<li>数据卷拓扑感知动态创建 (Topology-Aware Volume Dynamic Provisioning): 先调度 Pod，再根据 Pod 所在节点的拓扑域来创建存储，这算是存储与调度的亲和，存储的创建取决于调度的结果。</li>
-</ul>
-<p>而 k8s 目前在网络方面还没有亲和性能力，拓扑感知服务路由这个新特性恰好可以补齐这个的空缺，此特性使得 service 可以实现就近转发而不是所有 endpoint 等概率转发。</p>
-<h2 id="如何实现"><a href="#如何实现" class="headerlink" title="如何实现"></a>如何实现</h2><p>我们知道，service 转发主要是 node 上的 kube-proxy 进程通过 watch apiserver 获取 service 对应的 endpoint，再写入 iptables 或 ipvs 规则来实现的; 对于 headless service，主要是通过 kube-dns 或 coredns 动态解析到不同 endpoint ip 来实现的。实现 service 就近转发的关键点就在于如何将流量转发到跟当前节点在同一拓扑域的 endpoint 上，也就是会进行一次 endpoint 筛选，选出一部分符合当前节点拓扑域的 endpoint 进行转发。</p>
-<p>那么如何判断 endpoint 跟当前节点是否在同一拓扑域里呢？只要能获取到 endpoint 的拓扑信息，用它跟当前节点拓扑对比下就可以知道了。那又如何获取 endpoint 的拓扑信息呢？答案是通过 endpoint 所在节点的 label，我们可以使用 node label 来描述拓扑域。</p>
-<p>通常在节点初始化的时候，controller-manager 就会为节点打上许多 label，比如 <code>kubernetes.io/hostname</code> 表示节点的 hostname 来区分节点；另外，在云厂商提供的 k8s 服务，或者使用 cloud-controller-manager 的自建集群，通常还会给节点打上 <code>failure-domain.beta.kubernetes.io/zone</code> 和 <code>failure-domain.beta.kubernetes.io/region</code> 以区分节点所在可用区和所在地域，但自 v1.17 开始将会改名成 <code>topology.kubernetes.io/zone</code> 和 <code>topology.kubernetes.io/region</code>，参见 <a href="https://github.com/kubernetes/kubernetes/pull/81431" target="_blank" rel="noopener">PR #81431</a>。</p>
-<p>如何根据 endpoint 查到它所在节点的这些 label 呢？答案是通过 <code>Endpoint Slice</code>，该特性在 v1.16 发布了 alpha，在 v1.17 将会进入 beta，它相当于 Endpoint API 增强版，通过将 endpoint 做数据分片来解决大规模 endpoint 的性能问题，并且可以携带更多的信息，包括 endpoint 所在节点的拓扑信息，拓扑感知服务路由特性会通过 <code>Endpoint Slice</code> 获取这些拓扑信息实现 endpoint 筛选 (过滤出在同一拓扑域的 endpoint)，然后再转换为 iptables 或 ipvs 规则写入节点以实现拓扑感知的路由转发。</p>
-<p>细心的你可能已经发现，之前每个节点上转发 service 的 iptables/ipvs 规则基本是一样的，但启用了拓扑感知服务路由特性之后，每个节点上的转发规则就可能不一样了，因为不同节点的拓扑信息不一样，导致过滤出的 endpoint 就不一样，也正是因为这样，service 转发变得不再等概率，灵活的就近转发才得以实现。</p>
-<p>当前还不支持 headless service 的拓扑路由，计划在 beta 阶段支持。由于 headless service 不是通过 kube-proxy 生成转发规则，而是通过 dns 动态解析实现的，所以需要改 kube-dns/coredns 来支持这个特性。</p>
-<h2 id="前提条件"><a href="#前提条件" class="headerlink" title="前提条件"></a>前提条件</h2><p>启用当前 alpha 实现的拓扑感知服务路由特性需要满足以下前提条件:</p>
-<ul>
-<li>集群版本在 v1.17 及其以上。</li>
-<li>Kube-proxy 以 iptables 或 IPVS 模式运行 (alpha 阶段暂时只实现了这两种模式)。</li>
-<li>启用了 <a href="https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/" target="_blank" rel="noopener">Endpoint Slices</a> (此特性虽然在 v1.17 进入 beta，但没有默认开启)。</li>
-</ul>
-<h2 id="如何启用此特性"><a href="#如何启用此特性" class="headerlink" title="如何启用此特性"></a>如何启用此特性</h2><p>给所有 k8s 组件打开 <code>ServiceTopology</code> 和 <code>EndpointSlice</code> 这两个 feature:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">--feature-gates=&quot;ServiceTopology=true,EndpointSlice=true&quot;</span><br></pre></td></tr></table></figure>
-<h2 id="如何使用"><a href="#如何使用" class="headerlink" title="如何使用"></a>如何使用</h2><p>在 Service spec 里加上 <code>topologyKeys</code> 字段，表示该 Service 优先顺序选用的拓扑域列表，对应节点标签的 key；当访问此 Service 时，会找是否有 endpoint 有对应 topology key 的拓扑信息并且 value 跟当前节点也一样，如果是，那就选定此 topology key 作为当前转发的拓扑域，并且筛选出其余所有在这个拓扑域的 endpoint 来进行转发；如果没有找到任何 endpoint 在当前 topology key 对应拓扑域，就会尝试第二个 topology key，依此类推；如果遍历完所有 topology key 也没有匹配到 endpoint 就会拒绝转发，就像此 service 没有后端 endpoint 一样。</p>
-<p>有一个特殊的 topology key “<code>*</code>“，它可以匹配所有 endpoint，如果 <code>topologyKeys</code> 包含了 <code>*</code>，它必须在列表末尾，通常是在没有匹配到合适的拓扑域来实现就近转发时，就打消就近转发的念头，可以转发到任意 endpoint 上。</p>
-<p>当前 topology key 支持以下可能的值（未来会增加更多）:</p>
-<ul>
-<li><code>kubernetes.io/hostname</code>: 节点的 hostname，通常将它放列表中第一个，表示如果本机有 endpoint 就直接转发到本机的 endpoint。</li>
-<li><code>topology.kubernetes.io/zone</code>: 节点所在的可用区，通常将它放在 <code>kubernetes.io/hostname</code> 后面，表示如果本机没有对应 endpoint，就转发到当前可用区其它节点上的 endpoint（部分云厂商跨可用区通信会收取额外的流量费用）。</li>
-<li><code>topology.kubernetes.io/region</code>: 表示节点所在的地域，表示转发到当前地域的 endpoint，这个用的应该会比较少，因为通常集群所有节点都只会在同一个地域，如果节点跨地域了，节点之间通信延时将会很高。</li>
-<li><code>*</code>: 忽略拓扑域，匹配所有 endpoint，相当于一个保底策略，避免丢包，只能放在列表末尾。</li>
-</ul>
-<p>除此之外，还有以下约束:</p>
-<ul>
-<li><code>topologyKeys</code> 与 <code>externalTrafficPolicy=Local</code> 不兼容，是互斥的，如果 <code>externalTrafficPolicy</code> 为 <code>Local</code>，就不能定义 <code>topologyKeys</code>，反之亦然。</li>
-<li>topology key 必须是合法的 label 格式，并且最多定义 16 个 key。</li>
-</ul>
-<p>这里给出一个简单的 Service 示例:</p>
-<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Service</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line"><span class="attr">  name:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  type:</span> <span class="string">ClusterIP</span></span><br><span class="line"><span class="attr">  ports:</span></span><br><span class="line"><span class="attr">  - name:</span> <span class="string">http</span></span><br><span class="line"><span class="attr">    port:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">    protocol:</span> <span class="string">TCP</span></span><br><span class="line"><span class="attr">    targetPort:</span> <span class="number">80</span></span><br><span class="line"><span class="attr">  selector:</span></span><br><span class="line"><span class="attr">    app:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">  topologyKeys:</span> <span class="string">["kubernetes.io/hostname",</span> <span class="string">"topology.kubernetes.io/zone"</span><span class="string">,</span> <span class="string">"*"</span><span class="string">]</span></span><br></pre></td></tr></table></figure>
-<p>解释: 当访问 nginx 服务时，首先看本机是否有这个服务的 endpoint，如果有就直接本机路由过去；如果没有，就看是否有 endpoint 位于当前节点所在可用区，如果有，就转发过去，如果还是没有，就转发给任意 endpoint。</p>
-<p><img src="https://imroc.io/assets/blog/service-topology.png" alt=""></p>
-<p>上图就是其中一次转发的例子：Pod 访问 nginx 这个 service 时，发现本机没有 endpoint，就找当前可用区的，找到了就转发过去，也就不会考虑转发给另一可用区的 endpoint。</p>
-<h2 id="背后小故事"><a href="#背后小故事" class="headerlink" title="背后小故事"></a>背后小故事</h2><p>此特性的 KEP Proposal 最终被认可（合并）时的设计与当前最终的代码实现已经有一些差别，实现方案历经一变再变，但同时也推动了其它特性的发展，我来讲下这其中的故事。</p>
-<p>一开始设计是在 alpha 时，让 kube-proxy 直接暴力 watch node，每个节点都有一份全局的 node 的缓存，通过 endpoint 的 <code>nodeName</code> 字段找到对应的 node 缓存，再查 node 包含的 label 就可以知道该 endpoint 的拓扑域了，但在集群节点数量多的情况下，kube-proxy 将会消耗大量资源，不过优点是实现上很简单，可以作为 alpha 阶段的实现，beta 时再从 watch node 切换到 watch 一个新设计的 PodLocator API，作为拓扑信息存储的中介，避免 watch 庞大的 node。</p>
-<p>实际上一开始我也是按照 watch node 的方式，花了九牛二虎之力终于实现了这个特性，后来 v1.15 时 k8s 又支持了 metadata-only watch，参见 <a href="https://github.com/kubernetes/kubernetes/pull/71548" target="_blank" rel="noopener">PR 71548</a>，利用此特性可以仅仅 watch node 的 metadata，而不用 watch 整个 node，可以极大减小传输和缓存的数据量，然后我就将实现切成了 watch node metadata; 即便如此，metadata 还是会更新比较频繁，主要是 <code>resourceVersion</code> 会经常变 (kubelet 经常上报 node 状态)，所以虽然 watch node metadata 比 watch node 要好，但也还是可能会造成大量不必要的网络流量，但作为 alpha 实现是可以接受的。</p>
-<p>可惜在 v1.16 code freeze 之前没能将此特性合进去，只因有一点小细节还没讨论清楚。 实际在实现 watch node 方案期间，Endpoint Slice 特性就提出来了，在这个特性讨论的阶段，我们就想到了可以利用它来携带拓扑信息，以便让拓扑感知服务路由这个特性后续可以直接利用 Endpoint Slice 来获取拓扑信息，也就可以替代之前设计的 PodLocator API，但由于它还处于很早期阶段，并且代码还未合并进去，所以 alpha 阶段先不考虑 watch Endpint Slice。后来，Endpoint Slice 特性在 v1.16 发布了 alpha。</p>
-<p>由于 v1.16 没能将拓扑感知服务路由特性合进去，在 v1.17 周期开始后，有更多时间来讨论小细节，并且 Endpoint Slice 代码已经合并，我就干脆直接又将实现从 watch node metadata 切成了 watch Endpint Slice，在 alpha 阶段就做了打算在 beta 阶段做的事情，终于，此特性实现代码最终合进了主干。</p>
-<h2 id="结尾"><a href="#结尾" class="headerlink" title="结尾"></a>结尾</h2><p>拓扑感知服务路由可以实现 service 就近转发，减少网络延时，进一步提升 k8s 的网络性能，此特性将于 k8s v1.17 发布 alpha，时间是 12 月上旬，让我们一起期待吧！k8s 网络是块难啃的硬骨头，感兴趣的同学可以看下杜军的新书 <a href="https://item.jd.com/12724298.html" target="_blank" rel="noopener">《Kubernetes 网络权威指南》</a>，整理巩固一下 k8s 的网络知识。</p>
-<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
-<li>KEP: EndpintSlice - <a href="https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/20190603-EndpointSlice-API.md" target="_blank" rel="noopener">https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/20190603-EndpointSlice-API.md</a></li>
-<li>Proposal: Volume Topology-aware Scheduling - <a href="https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/volume-topology-scheduling.md" target="_blank" rel="noopener">https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/volume-topology-scheduling.md</a></li>
-<li>PR: Service Topology implementation for Kubernetes - <a href="https://github.com/kubernetes/kubernetes/pull/72046" target="_blank" rel="noopener">https://github.com/kubernetes/kubernetes/pull/72046</a></li>
-<li>Proposal: Inter-pod topological affinity and anti-affinity - <a href="https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/podaffinity.md" target="_blank" rel="noopener">https://github.com/kubernetes/community/blob/master/contributors/design-proposals/scheduling/podaffinity.md</a></li>
-<li>Topology-Aware Volume Provisioning in Kubernetes - <a href="https://kubernetes.io/blog/2018/10/11/topology-aware-volume-provisioning-in-kubernetes/" target="_blank" rel="noopener">https://kubernetes.io/blog/2018/10/11/topology-aware-volume-provisioning-in-kubernetes/</a></li>
-<li>Kubernetes 1.14: Local Persistent Volumes GA - <a href="https://kubernetes.io/blog/2019/04/04/kubernetes-1.14-local-persistent-volumes-ga/" target="_blank" rel="noopener">https://kubernetes.io/blog/2019/04/04/kubernetes-1.14-local-persistent-volumes-ga/</a></li>
-<li>KubeCon 演讲: 面向 k8s 的拓扑感知服务路由即将推出! - <a href="https://v.qq.com/x/page/t0893nn9zqa.html" target="_blank" rel="noopener">https://v.qq.com/x/page/t0893nn9zqa.html</a></li>
-<li>拓扑感知服务路由官方文档(等v1.17发布后才能看到) - <a href="https://kubernetes.io/docs/concepts/services-networking/service-topology/" target="_blank" rel="noopener">https://kubernetes.io/docs/concepts/services-networking/service-topology/</a></li>
-<li>KEP: Topology-aware service routing - <a href="https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/20181024-service-topology.md" target="_blank" rel="noopener">https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/20181024-service-topology.md</a> (此文档后续会更新，因为实现跟设计已经不一样了)</li>
-</ul>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/11/26/service-topology/" data-id="ckahkyzie000ratu5bvk7h3lh" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-troubleshooting-with-kubernetes-network" class="article article-type-post" itemscope="" itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/08/12/troubleshooting-with-kubernetes-network/" class="article-date">
-  <time datetime="2019-08-12T09:03:00.000Z" itemprop="datePublished">2019-08-12</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/08/12/troubleshooting-with-kubernetes-network/">Kubernetes 网络疑难杂症排查分享</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
-<p>大家好，我是 roc，来自腾讯云容器服务(TKE)团队，经常帮助用户解决各种 K8S 的疑难杂症，积累了比较丰富的经验，本文分享几个比较复杂的网络方面的问题排查和解决思路，深入分析并展开相关知识，信息量巨大，相关经验不足的同学可能需要细细品味才能消化，我建议收藏本文反复研读，当完全看懂后我相信你的功底会更加扎实，解决问题的能力会大大提升。</p>
-<blockquote>
-<p>本文发现的问题是在使用 TKE 时遇到的，不同厂商的网络环境可能不一样，文中会对不同的问题的网络环境进行说明</p>
-</blockquote>
-<p><img src="https://imroc.io/assets/meme/dengguangshi.png" alt=""></p>
-<h2 id="跨-VPC-访问-NodePort-经常超时"><a href="#跨-VPC-访问-NodePort-经常超时" class="headerlink" title="跨 VPC 访问 NodePort 经常超时"></a>跨 VPC 访问 NodePort 经常超时</h2><p>现象: 从 VPC a 访问 VPC b 的 TKE 集群的某个节点的 NodePort，有时候正常，有时候会卡住直到超时。</p>
-<p>原因怎么查？</p>
-<p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>当然是先抓包看看啦，抓 server 端 NodePort 的包，发现异常时 server 能收到 SYN，但没响应 ACK:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/no_ack.png" alt=""></p>
-<p>反复执行 <code>netstat -s | grep LISTEN</code> 发现 SYN 被丢弃数量不断增加:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/drop_syn.png" alt=""></p>
-<p>分析：</p>
-<ul>
-<li>两个VPC之间使用对等连接打通的，CVM 之间通信应该就跟在一个内网一样可以互通。</li>
-<li>为什么同一 VPC 下访问没问题，跨 VPC 有问题? 两者访问的区别是什么?</li>
-</ul>
-<p><img src="https://imroc.io/assets/meme/man_need_think.png" alt=""></p>
-<p>再仔细看下 client 所在环境，发现 client 是 VPC a 的 TKE 集群节点，捋一下:</p>
-<ul>
-<li>client 在 VPC a 的 TKE 集群的节点</li>
-<li>server 在 VPC b 的 TKE 集群的节点</li>
-</ul>
-<p>因为 TKE 集群中有个叫 <code>ip-masq-agent</code> 的 daemonset，它会给 node 写 iptables 规则，默认 SNAT 目的 IP 是 VPC 之外的报文，所以 client 访问 server 会做 SNAT，也就是这里跨 VPC 相比同 VPC 访问 NodePort 多了一次 SNAT，如果是因为多了一次 SNAT 导致的这个问题，直觉告诉我这个应该跟内核参数有关，因为是 server 收到包没回包，所以应该是 server 所在 node 的内核参数问题，对比这个 node 和 普通 TKE node 的默认内核参数，发现这个 node <code>net.ipv4.tcp_tw_recycle = 1</code>，这个参数默认是关闭的，跟用户沟通后发现这个内核参数确实在做压测的时候调整过。</p>
-<p><img src="https://imroc.io/assets/meme/chijing2.png" alt=""></p>
-<p>解释一下，TCP 主动关闭连接的一方在发送最后一个 ACK 会进入 <code>TIME_AWAIT</code> 状态，再等待 2 个 MSL 时间后才会关闭(因为如果 server 没收到 client 第四次挥手确认报文，server 会重发第三次挥手 FIN 报文，所以 client 需要停留 2 MSL的时长来处理可能会重复收到的报文段；同时等待 2 MSL 也可以让由于网络不通畅产生的滞留报文失效，避免新建立的连接收到之前旧连接的报文)，了解更详细的过程请参考 TCP 四次挥手。</p>
-<p>参数 <code>tcp_tw_recycle</code> 用于快速回收 <code>TIME_AWAIT</code> 连接，通常在增加连接并发能力的场景会开启，比如发起大量短连接，快速回收可避免  <code>tw_buckets</code> 资源耗尽导致无法建立新连接 (<code>time wait bucket table overflow</code>)</p>
-<p>查得 <code>tcp_tw_recycle</code> 有个坑，在 RFC1323 有段描述:</p>
-<p><code>An additional mechanism could be added to the TCP, a per-host cache of the last timestamp received from any connection. This value could then be used in the PAWS mechanism to reject old duplicate segments from earlier incarnations of the connection, if the timestamp clock can be guaranteed to have ticked at least once since the old connection was open. This would require that the TIME-WAIT delay plus the RTT together must be at least one tick of the sender’s timestamp clock. Such an extension is not part of the proposal of this RFC.</code></p>
-<p>大概意思是说 TCP 有一种行为，可以缓存每个连接最新的时间戳，后续请求中如果时间戳小于缓存的时间戳，即视为无效，相应的数据包会被丢弃。  </p>
-<p>Linux 是否启用这种行为取决于 <code>tcp_timestamps</code> 和 <code>tcp_tw_recycle</code>，因为 <code>tcp_timestamps</code> 缺省开启，所以当 <code>tcp_tw_recycle</code> 被开启后，实际上这种行为就被激活了，当客户端或服务端以 <code>NAT</code> 方式构建的时候就可能出现问题。</p>
-<p>当多个客户端通过 NAT 方式联网并与服务端交互时，服务端看到的是同一个 IP，也就是说对服务端而言这些客户端实际上等同于一个，可惜由于这些客户端的时间戳可能存在差异，于是乎从服务端的视角看，便可能出现时间戳错乱的现象，进而直接导致时间戳小的数据包被丢弃。如果发生了此类问题，具体的表现通常是是客户端明明发送的 SYN，但服务端就是不响应 ACK。</p>
-<p>回到我们的问题上，client 所在节点上可能也会有其它 pod 访问到 server 所在节点，而它们都被 SNAT 成了 client 所在节点的 NODE IP，但时间戳存在差异，server 就会看到时间戳错乱，因为开启了 <code>tcp_tw_recycle</code> 和 <code>tcp_timestamps</code> 激活了上述行为，就丢掉了比缓存时间戳小的报文，导致部分 SYN 被丢弃，这也解释了为什么之前我们抓包发现异常时 server 收到了 SYN，但没有响应 ACK，进而说明为什么 client 的请求部分会卡住直到超时。</p>
-<p>由于 <code>tcp_tw_recycle</code> 坑太多，在内核 4.12 之后已移除: <a href="https://github.com/torvalds/linux/commit/4396e46187ca5070219b81773c4e65088dac50cc" target="_blank" rel="noopener">remove tcp_tw_recycle</a></p>
-<p><img src="https://imroc.io/assets/meme/laugh1.png" alt=""></p>
-<h2 id="LB-压测-CPS-低"><a href="#LB-压测-CPS-低" class="headerlink" title="LB 压测 CPS 低"></a>LB 压测 CPS 低</h2><p>现象: LoadBalancer 类型的 Service，直接压测 NodePort CPS 比较高，但如果压测 LB CPS 就很低。</p>
-<p>环境说明: 用户使用的黑石TKE，不是公有云TKE，黑石的机器是物理机，LB的实现也跟公有云不一样，但 LoadBalancer 类型的 Service 的实现同样也是 LB 绑定各节点的 NodePort，报文发到 LB 后转到节点的 NodePort， 然后再路由到对应 pod，而测试在公有云 TKE 环境下没有这个问题。</p>
-<p>client 抓包: 大量SYN重传。</p>
-<p>server 抓包: 抓 NodePort 的包，发现当 client SYN 重传时 server 能收到 SYN 包但没有响应。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>又是 SYN 收到但没响应，难道又是开启 <code>tcp_tw_recycle</code> 导致的？检查节点的内核参数发现并没有开启，除了这个原因，还会有什么情况能导致被丢弃？</p>
-<p><code>conntrack -S</code> 看到 <code>insert_failed</code> 数量在不断增加，也就是 conntrack 在插入很多新连接的时候失败了，为什么会插入失败？什么情况下会插入失败？</p>
-<p><img src="https://imroc.io/assets/meme/analysis_forever.png" alt=""></p>
-<p>挖内核源码: netfilter conntrack 模块为每个连接创建 conntrack 表项时，表项的创建和最终插入之间还有一段逻辑，没有加锁，是一种乐观锁的过程。conntrack 表项并发刚创建时五元组不冲突的话可以创建成功，但中间经过 NAT 转换之后五元组就可能变成相同，第一个可以插入成功，后面的就会插入失败，因为已经有相同的表项存在。比如一个 SYN 已经做了 NAT 但是还没到最终插入的时候，另一个 SYN 也在做 NAT，因为之前那个 SYN 还没插入，这个 SYN 做 NAT 的时候就认为这个五元组没有被占用，那么它 NAT 之后的五元组就可能跟那个还没插入的包相同。</p>
-<p>在我们这个问题里实际就是 netfilter 做 SNAT 时源端口选举冲突了，黑石 LB 会做 SNAT，SNAT 时使用了 16 个不同 IP 做源，但是短时间内源 Port 却是集中一致的，并发两个 SYN a 和SYN b，被 LB SNAT 后源 IP 不同但源 Port 很可能相同，这里就假设两个报文被 LB SNAT 之后它们源 IP 不同源 Port 相同，报文同时到了节点的 NodePort 会再次做 SNAT 再转发到对应的 Pod，当报文到了 NodePort 时，这时它们五元组不冲突，netfilter 为它们分别创建了 conntrack 表项，SYN a 被节点 SNAT 时默认行为是 从 port_range 范围的当前源 Port 作为起始位置开始循环遍历，选举出没有被占用的作为源 Port，因为这两个 SYN 源 Port 相同，所以它们源 Port 选举的起始位置相同，当 SYN a 选出源 Port 但还没将 conntrack 表项插入时，netfilter 认为这个 Port 没被占用就很可能给 SYN b 也选了相同的源 Port，这时他们五元组就相同了，当 SYN a 的 conntrack 表项插入后再插入 SYN b 的 conntrack 表项时，发现已经有相同的记录就将 SYN b 的 conntrack 表项丢弃了。</p>
-<p>解决方法探索: 不使用源端口选举，在 iptables 的 MASQUERADE 规则如果加 <code>--random-fully</code> 这个 flag 可以让端口选举完全随机，基本上能避免绝大多数的冲突，但也无法完全杜绝。最终决定开发 LB 直接绑 Pod IP，不基于 NodePort，从而避免 netfilter 的 SNAT 源端口冲突问题。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_jizhi.png" alt=""></p>
-<h2 id="DNS-解析偶尔-5S-延时"><a href="#DNS-解析偶尔-5S-延时" class="headerlink" title="DNS 解析偶尔 5S 延时"></a>DNS 解析偶尔 5S 延时</h2><p>网上一搜，是已知问题，仔细分析，实际跟之前黑石 TKE 压测 LB CPS 低的根因是同一个，都是因为 netfilter conntrack 模块的设计问题，只不过之前发生在 SNAT，这个发生在 DNAT，这里用我的语言来总结下原因:</p>
-<p>DNS client (glibc 或 musl libc) 会并发请求 A 和 AAAA 记录，跟 DNS Server 通信自然会先 connect (建立fd)，后面请求报文使用这个 fd 来发送，由于 UDP 是无状态协议， connect 时并不会创建 conntrack 表项, 而并发请求的 A 和 AAAA 记录默认使用同一个 fd 发包，这时它们源 Port 相同，当并发发包时，两个包都还没有被插入 conntrack 表项，所以 netfilter 会为它们分别创建 conntrack 表项，而集群内请求 kube-dns 或 coredns 都是访问的CLUSTER-IP，报文最终会被 DNAT 成一个 endpoint 的 POD IP，当两个包被 DNAT 成同一个 IP，最终它们的五元组就相同了，在最终插入的时候后面那个包就会被丢掉，如果 dns 的 pod 副本只有一个实例的情况就很容易发生，现象就是 dns 请求超时，client 默认策略是等待 5s 自动重试，如果重试成功，我们看到的现象就是 dns 请求有 5s 的延时。</p>
-<p>参考 weave works 工程师总结的文章: <a href="https://www.weave.works/blog/racy-conntrack-and-dns-lookup-timeouts" target="_blank" rel="noopener">Racy conntrack and DNS lookup timeouts</a></p>
-<p>解决方案一: 使用 TCP 发送 DNS 请求</p>
-<p>如果使用 TCP 发 DNS 请求，connect 时就会插入 conntrack 表项，而并发的 A 和 AAAA 请求使用同一个 fd，所以只会有一次 connect，也就只会尝试创建一个 conntrack 表项，也就避免插入时冲突。</p>
-<p><code>resolv.conf</code> 可以加 <code>options use-vc</code> 强制 glibc 使用 TCP 协议发送 DNS query。下面是这个 <code>man resolv.conf</code>中关于这个选项的说明:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">use-vc (since glibc 2.14)</span><br><span class="line">                     Sets RES_USEVC <span class="keyword">in</span> _res.options.  This option forces the</span><br><span class="line">                     use of TCP <span class="keyword">for</span> DNS resolutions.</span><br></pre></td></tr></table></figure>
-<p>解决方案二: 避免相同五元组 DNS 请求的并发</p>
-<p><code>resolv.conf</code> 还有另外两个相关的参数：</p>
-<ul>
-<li>single-request-reopen (since glibc 2.9): A 和 AAAA 请求使用不同的 socket 来发送，这样它们的源 Port 就不同，五元组也就不同，避免了使用同一个 conntrack 表项。</li>
-<li>single-request (since glibc 2.10): A 和 AAAA 请求改成串行，没有并发，从而也避免了冲突。</li>
-</ul>
-<p><code>man resolv.conf</code> 中解释如下:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">single-request-reopen (since glibc 2.9)</span><br><span class="line">                     Sets RES_SNGLKUPREOP <span class="keyword">in</span> _res.options.  The resolver</span><br><span class="line">                     uses the same socket <span class="keyword">for</span> the A and AAAA requests.  Some</span><br><span class="line">                     hardware mistakenly sends back only one reply.  When</span><br><span class="line">                     that happens the client system will sit and <span class="built_in">wait</span> <span class="keyword">for</span></span><br><span class="line">                     the second reply.  Turning this option on changes this</span><br><span class="line">                     behavior so that <span class="keyword">if</span> two requests from the same port are</span><br><span class="line">                     not handled correctly it will close the socket and open</span><br><span class="line">                     a new one before sending the second request.</span><br><span class="line"></span><br><span class="line">single-request (since glibc 2.10)</span><br><span class="line">                     Sets RES_SNGLKUP <span class="keyword">in</span> _res.options.  By default, glibc</span><br><span class="line">                     performs IPv4 and IPv6 lookups <span class="keyword">in</span> parallel since</span><br><span class="line">                     version 2.9.  Some appliance DNS servers cannot handle</span><br><span class="line">                     these queries properly and make the requests time out.</span><br><span class="line">                     This option disables the behavior and makes glibc</span><br><span class="line">                     perform the IPv6 and IPv4 requests sequentially (at the</span><br><span class="line">                     cost of some slowdown of the resolving process).</span><br></pre></td></tr></table></figure></p>
-<p>要给容器的 <code>resolv.conf</code> 加上 options 参数，最方便的是直接在 Pod Spec 里面的 dnsConfig 加 (k8s v1.9 及以上才支持)</p>
-<p><img src="https://imroc.io/assets/meme/jugelizi.jpeg" alt=""></p>
-<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">spec:</span></span><br><span class="line"><span class="attr">  dnsConfig:</span></span><br><span class="line"><span class="attr">    options:</span></span><br><span class="line"><span class="attr">      - name:</span> <span class="string">single-request-reopen</span></span><br></pre></td></tr></table></figure>
-<p>加 options 还有其它一些方法:</p>
-<ul>
-<li>在容器的 <code>ENTRYPOINT</code> 或者 <code>CMD</code> 脚本中，执行 <code>/bin/echo &#39;options single-request-reopen&#39; &gt;&gt; /etc/resolv.conf</code></li>
-<li><p>在 postStart hook 里加:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">lifecycle:</span><br><span class="line">  postStart:</span><br><span class="line">    <span class="built_in">exec</span>:</span><br><span class="line">      <span class="built_in">command</span>:</span><br><span class="line">      - /bin/sh</span><br><span class="line">      - -c </span><br><span class="line">      - <span class="string">"/bin/echo 'options single-request-reopen' &gt;&gt; /etc/resolv.conf"</span></span><br></pre></td></tr></table></figure>
-</li>
-<li><p>使用 <a href="https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#mutatingadmissionwebhook-beta-in-1-9" target="_blank" rel="noopener">MutatingAdmissionWebhook</a>，这是 1.9 引入的 Controller，用于对一个指定的资源的操作之前，对这个资源进行变更。 istio 的自动 sidecar 注入就是用这个功能来实现的，我们也可以通过 <code>MutatingAdmissionWebhook</code> 来自动给所有 Pod 注入 <code>resolv.conf</code> 文件，不过需要一定的开发量。</p>
-</li>
-</ul>
-<p>解决方案三: 使用本地 DNS 缓存</p>
-<p>仔细观察可以看到前面两种方案是 glibc 支持的，而基于 alpine 的镜像底层库是 musl libc 不是 glibc，所以即使加了这些 options 也没用，这种情况可以考虑使用本地 DNS 缓存来解决，容器的 DNS 请求都发往本地的 DNS 缓存服务(dnsmasq, nscd等)，不需要走 DNAT，也不会发生 conntrack 冲突。另外还有个好处，就是避免 DNS 服务成为性能瓶颈。</p>
-<p>使用本地DNS缓存有两种方式：</p>
-<ul>
-<li>每个容器自带一个 DNS 缓存服务</li>
-<li>每个节点运行一个 DNS 缓存服务，所有容器都把本节点的 DNS 缓存作为自己的 nameserver</li>
-</ul>
-<p>从资源效率的角度来考虑的话，推荐后一种方式。</p>
-<h2 id="Pod-访问另一个集群的-apiserver-有延时"><a href="#Pod-访问另一个集群的-apiserver-有延时" class="headerlink" title="Pod 访问另一个集群的 apiserver 有延时"></a>Pod 访问另一个集群的 apiserver 有延时</h2><p>现象：集群 a 的 Pod 内通过 kubectl 访问集群 b 的内网地址，偶尔出现延时的情况，但直接在宿主机上用同样的方法却没有这个问题。</p>
-<p>提炼环境和现象精髓:</p>
-<ol>
-<li>在 pod 内将另一个集群 apiserver 的 ip 写到了 hosts，因为 TKE apiserver 开启内网集群外内网访问创建的内网 LB 暂时没有支持自动绑内网 DNS 域名解析，所以集群外的内网访问 apiserver 需要加 hosts</li>
-<li>pod 内执行 kubectl 访问另一个集群偶尔延迟 5s，有时甚至10s</li>
-</ol>
-<p>观察到 5s 延时，感觉跟之前 conntrack 的丢包导致 dns 解析 5s 延时有关，但是加了 hosts 呀，怎么还去解析域名？</p>
-<p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>进入 pod netns 抓包: 执行 kubectl 时确实有 dns 解析，并且发生延时的时候 dns 请求没有响应然后做了重试。</p>
-<p>看起来延时应该就是之前已知 conntrack 丢包导致 dns 5s 超时重试导致的。但是为什么会去解析域名? 明明配了 hosts 啊，正常情况应该是优先查找 hosts，没找到才去请求 dns 呀，有什么配置可以控制查找顺序?</p>
-<p>搜了一下发现: <code>/etc/nsswitch.conf</code> 可以控制，但看有问题的 pod 里没有这个文件。然后观察到有问题的 pod 用的 alpine 镜像，试试其它镜像后发现只有基于 alpine 的镜像才会有这个问题。</p>
-<p>再一搜发现: musl libc 并不会使用 <code>/etc/nsswitch.conf</code> ，也就是说 alpine 镜像并没有实现用这个文件控制域名查找优先顺序，瞥了一眼 musl libc 的 <code>gethostbyname</code> 和 <code>getaddrinfo</code> 的实现，看起来也没有读这个文件来控制查找顺序，写死了先查 hosts，没找到再查 dns。</p>
-<p>这么说，那还是该先查 hosts 再查 dns 呀，为什么这里抓包看到是先查的 dns? (如果是先查 hosts 就能命中查询，不会再发起dns请求)</p>
-<p>访问 apiserver 的 client 是 kubectl，用 go 写的，会不会是 go 程序解析域名时压根没调底层 c 库的 <code>gethostbyname</code> 或 <code>getaddrinfo</code>?</p>
-<p><img src="https://imroc.io/assets/meme/physical_analysis.png" alt=""></p>
-<p>搜一下发现果然是这样: go runtime 用 go 实现了 glibc 的 <code>getaddrinfo</code> 的行为来解析域名，减少了 c 库调用 (应该是考虑到减少 cgo 调用带来的的性能损耗)</p>
-<p>issue: <a href="https://github.com/golang/go/issues/18518" target="_blank" rel="noopener">net: replicate DNS resolution behaviour of getaddrinfo(glibc) in the go dns resolver</a></p>
-<p>翻源码验证下:</p>
-<p>Unix 系的 OS 下，除了 openbsd， go runtime 会读取 <code>/etc/nsswitch.conf</code> (<code>net/conf.go</code>):</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/nsswitch.png" alt=""></p>
-<p><code>hostLookupOrder</code> 函数决定域名解析顺序的策略，Linux 下，如果没有 <code>nsswitch.conf</code> 文件就 dns 比 hosts 文件优先 (<code>net/conf.go</code>):</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/hostLookupOrder.png" alt=""></p>
-<p>可以看到 <code>hostLookupDNSFiles</code> 的意思是 dns first (<code>net/dnsclient_unix.go</code>):</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/hostLookupDNSFiles.png" alt=""></p>
-<p>所以虽然 alpine 用的 musl libc 不是 glibc，但 go 程序解析域名还是一样走的 glibc 的逻辑，而 alpine 没有 <code>/etc/nsswitch.conf</code> 文件，也就解释了为什么 kubectl 访问 apiserver 先做 dns 解析，没解析到再查的 hosts，导致每次访问都去请求 dns，恰好又碰到 conntrack 那个丢包问题导致 dns 5s 延时，在用户这里表现就是 pod 内用 kubectl 访问 apiserver 偶尔出现 5s 延时，有时出现 10s 是因为重试的那次 dns 请求刚好也遇到 conntrack 丢包导致延时又叠加了 5s 。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_jizhi.png" alt=""></p>
-<p>解决方案:</p>
-<ol>
-<li>换基础镜像，不用 alpine</li>
-<li>挂载 <code>nsswitch.conf</code> 文件 (可以用 hostPath)</li>
-</ol>
-<h2 id="DNS-解析异常"><a href="#DNS-解析异常" class="headerlink" title="DNS 解析异常"></a>DNS 解析异常</h2><p>现象: 有个用户反馈域名解析有时有问题，看报错是解析超时。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>第一反应当然是看 coredns 的 log:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[ERROR] 2 loginspub.xxxxmobile-inc.net. </span><br><span class="line">A: unreachable backend: <span class="built_in">read</span> udp 172.16.0.230:43742-&gt;10.225.30.181:53: i/o timeout</span><br></pre></td></tr></table></figure></p>
-<p>这是上游 DNS 解析异常了，因为解析外部域名 coredns 默认会请求上游 DNS 来查询，这里的上游 DNS 默认是 coredns pod 所在宿主机的 <code>resolv.conf</code> 里面的 nameserver (coredns pod 的 dnsPolicy 为 “Default”，也就是会将宿主机里的 <code>resolv.conf</code> 里的 nameserver 加到容器里的 <code>resolv.conf</code>, coredns 默认配置 <code>proxy . /etc/resolv.conf</code>, 意思是非 service 域名会使用 coredns 容器中 <code>resolv.conf</code> 文件里的 nameserver 来解析)</p>
-<p>确认了下，超时的上游 DNS 10.225.30.181 并不是期望的 nameserver，VPC 默认 DNS 应该是 180 开头的。看了 coredns 所在节点的 <code>resolv.conf</code>，发现确实多出了这个非期望的 nameserver，跟用户确认了下，这个 DNS 不是用户自己加上去的，添加节点时这个 nameserver 本身就在 <code>resolv.conf</code> 中。</p>
-<p>根据内部同学反馈， 10.225.30.181 是广州一台年久失修将被撤裁的 DNS，物理网络，没有 VIP，撤掉就没有了，所以如果 coredns 用到了这台 DNS 解析时就可能 timeout。后面我们自己测试，某些 VPC 的集群确实会有这个 nameserver，奇了怪了，哪里冒出来的？</p>
-<p><img src="https://imroc.io/assets/meme/cooldown_analysis.png" alt=""></p>
-<p>又试了下直接创建 CVM，不加进 TKE 节点发现没有这个 nameserver，只要一加进 TKE 节点就有了 !!!</p>
-<p>看起来是 TKE 的问题，将 CVM 添加到 TKE 集群会自动重装系统，初始化并加进集群成为 K8S 的 node，确认了初始化过程并不会写 <code>resolv.conf</code>，会不会是 TKE 的 OS 镜像问题？尝试搜一下除了 <code>/etc/resolv.conf</code> 之外哪里还有这个 nameserver 的 IP，最后发现 <code>/etc/resolvconf/resolv.conf.d/base</code> 这里面有。</p>
-<p>看下 <code>/etc/resolvconf/resolv.conf.d/base</code> 的作用：Ubuntu 的 <code>/etc/resolv.conf</code> 是动态生成的，每次重启都会将 <code>/etc/resolvconf/resolv.conf.d/base</code>  里面的内容加到 <code>/etc/resolv.conf</code> 里。</p>
-<p>经确认: 这个文件确实是 TKE 的 Ubuntu OS 镜像里自带的，可能发布 OS 镜像时不小心加进去的。</p>
-<p>那为什么有些 VPC 的集群的节点 <code>/etc/resolv.conf</code> 里面没那个 IP 呢？它们的 OS 镜像里也都有那个文件那个 IP 呀。</p>
-<p>请教其它部门同学发现:</p>
-<ul>
-<li>非 dhcp 子机，cvm 的 cloud-init 会覆盖 <code>/etc/resolv.conf</code> 来设置 dns</li>
-<li>dhcp 子机，cloud-init 不会设置，而是通过 dhcp 动态下发</li>
-<li>2018 年 4 月 之后创建的 VPC 就都是 dhcp 类型了的，比较新的 VPC 都是 dhcp 类型的</li>
-</ul>
-<p>真相大白：<code>/etc/resolv.conf</code> 一开始内容都包含 <code>/etc/resolvconf/resolv.conf.d/base</code> 的内容，也就是都有那个不期望的 nameserver，但老的 VPC 由于不是 dhcp 类型，所以 cloud-init 会覆盖 <code>/etc/resolv.conf</code>，抹掉了不被期望的 nameserver，而新创建的 VPC 都是 dhcp 类型，cloud-init 不会覆盖 <code>/etc/resolv.conf</code>，导致不被期望的 nameserver 残留在了 <code>/etc/resolv.conf</code>，而 coredns pod 的 dnsPolicy 为 “Default”，也就是会将宿主机的 <code>/etc/resolv.conf</code> 中的 nameserver 加到容器里，coredns 解析集群外的域名默认使用这些 nameserver 来解析，当用到那个将被撤裁的 nameserver 就可能 timeout。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_jizhi.png" alt=""></p>
-<p>临时解决: 删掉 <code>/etc/resolvconf/resolv.conf.d/base</code>  重启</p>
-<p>长期解决: 我们重新制作 TKE Ubuntu OS 镜像然后发布更新</p>
-<p>这下应该没问题了吧，But, 用户反馈还是会偶尔解析有问题，但现象不一样了，这次并不是 dns timeout。</p>
-<p><img src="https://imroc.io/assets/meme/chijing1.png" alt=""></p>
-<p>用脚本跑测试仔细分析现象:</p>
-<ul>
-<li>请求 <code>loginspub.xxxxmobile-inc.net</code> 时，偶尔提示域名无法解析</li>
-<li>请求 <code>accounts.google.com</code> 时，偶尔提示连接失败</li>
-</ul>
-<p>进入 dns 解析偶尔异常的容器的 netns 抓包:</p>
-<ul>
-<li>dns 请求会并发请求 A 和 AAAA 记录</li>
-<li>测试脚本发请求打印序号，抓包然后 wireshark 分析对比异常时请求序号偏移量，找到异常时的 dns 请求报文，发现异常时 A 和 AAAA 记录的请求 id 冲突，并且 AAAA 响应先返回</li>
-</ul>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/dns-id-conflict.png" alt=""></p>
-<p>正常情况下id不会冲突，这里冲突了也就能解释这个 dns 解析异常的现象了:</p>
-<ul>
-<li><code>loginspub.xxxxmobile-inc.net</code> 没有 AAAA (ipv6) 记录，它的响应先返回告知 client 不存在此记录，由于请求 id 跟 A 记录请求冲突，后面 A 记录响应返回了 client 发现 id 重复就忽略了，然后认为这个域名无法解析</li>
-<li><code>accounts.google.com</code> 有 AAAA 记录，响应先返回了，client 就拿这个记录去尝试请求，但当前容器环境不支持 ipv6，所以会连接失败</li>
-</ul>
-<p>那为什么 dns 请求 id 会冲突?</p>
-<p><img src="https://imroc.io/assets/meme/chengsi.png" alt=""></p>
-<p>继续观察发现: 其它节点上的 pod 不会复现这个问题，有问题这个节点上也不是所有 pod 都有这个问题，只有基于 alpine 镜像的容器才有这个问题，在此节点新起一个测试的 <code>alpine:latest</code> 的容器也一样有这个问题。</p>
-<p>为什么 alpine 镜像的容器在这个节点上有问题在其它节点上没问题？ 为什么其他镜像的容器都没问题？它们跟 alpine 的区别是什么？</p>
-<p>发现一点区别: alpine 使用的底层 c 库是 musl libc，其它镜像基本都是 glibc</p>
-<p>翻 musl libc 源码, 构造 dns 请求时，请求 id 的生成没加锁，而且跟当前时间戳有关:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/musl-libc-make-dns-query.png" alt=""></p>
-<p>看注释，作者应该认为这样id基本不会冲突，事实证明，绝大多数情况确实不会冲突，我在网上搜了很久没有搜到任何关于 musl libc 的 dns 请求 id 冲突的情况。这个看起来取决于硬件，可能在某种类型硬件的机器上运行，短时间内生成的 id 就可能冲突。我尝试跟用户在相同地域的集群，添加相同配置相同机型的节点，也复现了这个问题，但后来删除再添加时又不能复现了，看起来后面新建的 cvm 又跑在了另一种硬件的母机上了。</p>
-<p>OK，能解释通了，再底层的细节就不清楚了，我们来看下解决方案:</p>
-<ul>
-<li>换基础镜像 (不用alpine)</li>
-<li>完全静态编译业务程序(不依赖底层c库)，比如go语言程序编译时可以关闭 cgo (CGO_ENABLED=0)，并告诉链接器要静态链接 (<code>go build</code> 后面加 <code>-ldflags &#39;-d&#39;</code>)，但这需要语言和编译工具支持才可以</li>
-</ul>
-<p>最终建议用户基础镜像换成另一个比较小的镜像: <code>debian:stretch-slim</code>。</p>
-<p>问题解决，但用户后面觉得 <code>debian:stretch-slim</code> 做出来的镜像太大了，有 6MB 多，而之前基于 alpine 做出来只有 1MB 多，最后使用了一个非官方的修改过 musl libc 的 alpine 镜像作为基础镜像，里面禁止了 AAAA 请求从而避免这个问题。</p>
-<h2 id="Pod-偶尔存活检查失败"><a href="#Pod-偶尔存活检查失败" class="headerlink" title="Pod 偶尔存活检查失败"></a>Pod 偶尔存活检查失败</h2><p>现象: Pod 偶尔会存活检查失败，导致 Pod 重启，业务偶尔连接异常。</p>
-<p>之前从未遇到这种情况，在自己测试环境尝试复现也没有成功，只有在用户这个环境才可以复现。这个用户环境流量较大，感觉跟连接数或并发量有关。</p>
-<p>用户反馈说在友商的环境里没这个问题。</p>
-<p><img src="https://imroc.io/assets/meme/emoji_analysis.png" alt=""></p>
-<p>对比友商的内核参数发现有些区别，尝试将节点内核参数改成跟友商的一样，发现问题没有复现了。</p>
-<p>再对比分析下内核参数差异，最后发现是 backlog 太小导致的，节点的 <code>net.ipv4.tcp_max_syn_backlog</code> 默认是 1024，如果短时间内并发新建 TCP 连接太多，SYN 队列就可能溢出，导致部分新连接无法建立。</p>
-<p>解释一下:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/backlog.png" alt=""></p>
-<p>TCP 连接建立会经过三次握手，server 收到 SYN 后会将连接加入 SYN 队列，当收到最后一个 ACK 后连接建立，这时会将连接从 SYN 队列中移动到 ACCEPT 队列。在 SYN 队列中的连接都是没有建立完全的连接，处于半连接状态。如果 SYN 队列比较小，而短时间内并发新建的连接比较多，同时处于半连接状态的连接就多，SYN 队列就可能溢出，<code>tcp_max_syn_backlog</code> 可以控制 SYN 队列大小，用户节点的 backlog 大小默认是 1024，改成 8096 后就可以解决问题。</p>
-<h2 id="访问-externalTrafficPolicy-为-Local-的-Service-对应-LB-有时超时"><a href="#访问-externalTrafficPolicy-为-Local-的-Service-对应-LB-有时超时" class="headerlink" title="访问 externalTrafficPolicy 为 Local 的 Service 对应 LB 有时超时"></a>访问 externalTrafficPolicy 为 Local 的 Service 对应 LB 有时超时</h2><p>现象：用户在 TKE 创建了公网 LoadBalancer 类型的 Service，externalTrafficPolicy 设为了 Local，访问这个 Service 对应的公网 LB 有时会超时。</p>
-<p>externalTrafficPolicy 为 Local 的 Service 用于在四层获取客户端真实源 IP，官方参考文档：<a href="https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer" target="_blank" rel="noopener">Source IP for Services with Type=LoadBalancer</a></p>
-<p>TKE 的 LoadBalancer 类型 Service 实现是使用 CLB 绑定所有节点对应 Service 的 NodePort，CLB 不做 SNAT，报文转发到 NodePort 时源 IP 还是真实的客户端 IP，如果 NodePort 对应 Service 的 externalTrafficPolicy 不是 Local 的就会做 SNAT，到 pod 时就看不到客户端真实源 IP 了，但如果是 Local 的话就不做 SNAT，如果本机 node 有这个 Service 的 endpoint 就转到对应 pod，如果没有就直接丢掉，因为如果转到其它 node 上的 pod 就必须要做 SNAT，不然无法回包，而 SNAT 之后就无法获取真实源 IP 了。</p>
-<p>LB 会对绑定节点的 NodePort 做健康检查探测，检查 LB 的健康检查状态: 发现这个 NodePort 的所有节点都不健康 !!!</p>
-<p><img src="https://imroc.io/assets/meme/chijing1.png" alt=""></p>
-<p>那么问题来了:</p>
-<ol>
-<li>为什么会全不健康，这个 Service 有对应的 pod 实例，有些节点上是有 endpoint 的，为什么它们也不健康?</li>
-<li>LB 健康检查全不健康，但是为什么有时还是可以访问后端服务?</li>
-</ol>
-<p><img src="https://imroc.io/assets/meme/smoke_cooldown.png" alt=""></p>
-<p>跟 LB 的同学确认: 如果后端 rs 全不健康会激活 LB 的全死全活逻辑，也就是所有后端 rs 都可以转发。</p>
-<p>那么有 endpoint 的 node 也是不健康这个怎么解释?</p>
-<p>在有 endpoint 的 node 上抓 NodePort 的包: 发现很多来自 LB 的 SYN，但是没有响应 ACK。</p>
-<p>看起来报文在哪被丢了，继续抓下 cbr0 看下: 发现没有来自 LB 的包，说明报文在 cbr0 之前被丢了。</p>
-<p>再观察用户集群环境信息:</p>
-<ol>
-<li>k8s 版本1.12</li>
-<li>启用了 ipvs</li>
-<li>只有 local 的 service 才有异常</li>
-</ol>
-<p>尝试新建一个 1.12 启用 ipvs 和一个没启用 ipvs 的测试集群。也都创建 Local 的 LoadBalancer Service，发现启用 ipvs 的测试集群复现了那个问题，没启用 ipvs 的集群没这个问题。</p>
-<p>再尝试创建 1.10 的集群，也启用 ipvs，发现没这个问题。</p>
-<p>看起来跟集群版本和是否启用 ipvs 有关。</p>
-<p>1.12 对比 1.10 启用 ipvs 的集群: 1.12 的会将 LB 的 <code>EXTERNAL-IP</code> 绑到 <code>kube-ipvs0</code> 上，而 1.10 的不会:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ ip a show kube-ipvs0 | grep -A2 170.106.134.124</span><br><span class="line">    inet 170.106.134.124/32 brd 170.106.134.124 scope global kube-ipvs0</span><br><span class="line">       valid_lft forever preferred_lft forever</span><br></pre></td></tr></table></figure></p>
-<ul>
-<li>170.106.134.124 是 LB 的公网 IP</li>
-<li>1.12 启用 ipvs 的集群将 LB 的公网 IP 绑到了 <code>kube-ipvs0</code> 网卡上</li>
-</ul>
-<p><code>kube-ipvs0</code> 是一个 dummy interface，实际不会接收报文，可以看到它的网卡状态是 DOWN，主要用于绑 ipvs 规则的 VIP，因为 ipvs 主要工作在 netfilter 的 INPUT 链，报文通过 PREROUTING 链之后需要决定下一步该进入 INPUT 还是 FORWARD 链，如果是本机 IP 就会进入 INPUT，如果不是就会进入 FORWARD 转发到其它机器。所以 k8s 利用 <code>kube-ipvs0</code> 这个网卡将 service 相关的 VIP 绑在上面以便让报文进入 INPUT 进而被 ipvs 转发。</p>
-<p>当 IP 被绑到 <code>kube-ipvs0</code> 上，内核会自动将上面的 IP 写入 local 路由:</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ ip route show table <span class="built_in">local</span> | grep 170.106.134.124</span><br><span class="line"><span class="built_in">local</span> 170.106.134.124 dev kube-ipvs0  proto kernel  scope host  src 170.106.134.124</span><br></pre></td></tr></table></figure>
-<p>内核认为在 local 路由里的 IP 是本机 IP，而 linux 默认有个行为: 忽略任何来自非回环网卡并且源 IP 是本机 IP 的报文。而 LB 的探测报文源 IP 就是 LB IP，也就是 Service 的 <code>EXTERNAL-IP</code> 猜想就是因为这个 IP 被绑到 <code>kube-ipvs0</code>，自动加进 local 路由导致内核直接忽略了 LB 的探测报文。</p>
-<p>带着猜想做实现， 试一下将 LB IP 从 local 路由中删除:<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ip route del table <span class="built_in">local</span> <span class="built_in">local</span> 170.106.134.124 dev kube-ipvs0  proto kernel  scope host  src 170.106.134.124</span><br></pre></td></tr></table></figure></p>
-<p>发现这个 node 的在 LB 的健康检查的状态变成健康了! 看来就是因为这个 LB IP 被绑到 <code>kube-ipvs0</code> 导致内核忽略了来自 LB 的探测报文，然后 LB 收不到回包认为不健康。</p>
-<p>那为什么其它厂商没反馈这个问题？应该是 LB 的实现问题，腾讯云的公网 CLB 的健康探测报文源 IP 就是 LB 的公网 IP，而大多数厂商的 LB 探测报文源 IP 是保留 IP 并非 LB 自身的 VIP。</p>
-<p>如何解决呢? 发现一个内核参数:  <a href="https://github.com/torvalds/linux/commit/8153a10c08f1312af563bb92532002e46d3f504a" target="_blank" rel="noopener">accept_local</a> 可以让 linux 接收源 IP 是本机 IP 的报文。</p>
-<p>试了开启这个参数，确实在 cbr0 收到来自 LB 的探测报文了，说明报文能被 pod 收到，但抓 eth0 还是没有给 LB 回包。</p>
-<p><img src="https://imroc.io/assets/meme/physical_analysis.png" alt=""></p>
-<p>为什么没有回包? 分析下五元组，要给 LB 回包，那么 <code>目的IP:目的Port</code> 必须是探测报文的 <code>源IP:源Port</code>，所以目的 IP 就是 LB IP，由于容器不在主 netns，发包经过 veth pair 到 cbr0 之后需要再经过 netfilter 处理，报文进入 PREROUTING 链然后发现目的 IP 是本机 IP，进入 INPUT 链，所以报文就出不去了。再分析下进入 INPUT 后会怎样，因为目的 Port 跟 LB 探测报文源 Port 相同，是一个随机端口，不在 Service 的端口列表，所以没有对应的 IPVS 规则，IPVS 也就不会转发它，而 <code>kube-ipvs0</code> 上虽然绑了这个 IP，但它是一个 dummy interface，不会收包，所以报文最后又被忽略了。</p>
-<p>再看看为什么 1.12 启用 ipvs 会绑 <code>EXTERNAL-IP</code> 到 <code>kube-ipvs0</code>，翻翻 k8s 的 kube-proxy 支持 ipvs 的 <a href="https://github.com/kubernetes/enhancements/blob/baca87088480254b26d0fdeb26303d7c51a20fbd/keps/sig-network/0011-ipvs-proxier.md#support-loadbalancer-service" target="_blank" rel="noopener">proposal</a>，发现有个地方说法有点漏洞:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/ipvs-proposal.png" alt=""></p>
-<p>LB 类型 Service 的 status 里有 ingress IP，实际就是 <code>kubectl get service</code> 看到的 <code>EXTERNAL-IP</code>，这里说不会绑定这个 IP 到 kube-ipvs0，但后面又说会给它创建 ipvs 规则，既然没有绑到 <code>kube-ipvs0</code>，那么这个 IP 的报文根本不会进入 INPUT 被 ipvs 模块转发，创建的 ipvs 规则也是没用的。</p>
-<p>后来找到作者私聊，思考了下，发现设计上确实有这个问题。</p>
-<p>看了下 1.10 确实也是这么实现的，但是为什么 1.12 又绑了这个 IP 呢? 调研后发现是因为 <a href="https://github.com/kubernetes/kubernetes/issues/59976" target="_blank" rel="noopener">#59976</a>  这个 issue 发现一个问题，后来引入 <a href="https://github.com/kubernetes/kubernetes/pull/63066" target="_blank" rel="noopener">#63066</a> 这个 PR 修复的，而这个 PR 的行为就是让 LB IP 绑到 <code>kube-ipvs0</code>，这个提交影响 1.11 及其之后的版本。</p>
-<p><a href="https://github.com/kubernetes/kubernetes/issues/59976" target="_blank" rel="noopener">#59976</a> 的问题是因为没绑 LB IP到 <code>kube-ipvs0</code> 上，在自建集群使用 <code>MetalLB</code> 来实现 LoadBalancer 类型的 Service，而有些网络环境下，pod 是无法直接访问 LB 的，导致 pod 访问 LB IP 时访问不了，而如果将 LB IP 绑到 <code>kube-ipvs0</code> 上就可以通过 ipvs 转发到 LB 类型 Service 对应的 pod 去， 而不需要真正经过 LB，所以引入了 <a href="https://github.com/kubernetes/kubernetes/pull/63066" target="_blank" rel="noopener">#63066</a> 这个PR。</p>
-<p>临时方案: 将 <a href="https://github.com/kubernetes/kubernetes/pull/63066" target="_blank" rel="noopener">#63066</a> 这个 PR 的更改回滚下，重新编译 kube-proxy，提供升级脚本升级存量 kube-proxy。</p>
-<p>如果是让 LB 健康检查探测支持用保留 IP 而不是自身的公网 IP ，也是可以解决，但需要跨团队合作，而且如果多个厂商都遇到这个问题，每家都需要为解决这个问题而做开发调整，代价较高，所以长期方案需要跟社区沟通一起推进，所以我提了 issue，将问题描述的很清楚: <a href="https://github.com/kubernetes/kubernetes/issues/79783" target="_blank" rel="noopener">#79783</a></p>
-<p>小思考: 为什么 CLB 可以不做 SNAT ? 回包目的 IP 就是真实客户端 IP，但客户端是直接跟 LB IP 建立的连接，如果回包不经过 LB 是不可能发送成功的呀。</p>
-<p>是因为 CLB 的实现是在母机上通过隧道跟 CVM 互联的，多了一层封装，回包始终会经过 LB。</p>
-<p>就是因为 CLB 不做 SNAT，正常来自客户端的报文是可以发送到 nodeport，但健康检查探测报文由于源 IP 是 LB IP 被绑到 <code>kube-ipvs0</code> 导致被忽略，也就解释了为什么健康检查失败，但通过LB能访问后端服务，只是有时会超时。那么如果要做 SNAT 的 LB 岂不是更糟糕，所有报文都变成 LB IP，所有报文都会被忽略?</p>
-<p>我提的 issue 有回复指出，AWS 的 LB 会做 SNAT，但它们不将 LB 的 IP 写到 Service 的 Status 里，只写了 hostname，所以也不会绑 LB IP 到 <code>kube-ipvs0</code>:</p>
-<p><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/aws-lb-snat.png" alt=""></p>
-<p>但是只写 hostname 也得 LB 支持自动绑域名解析，并且个人觉得只写 hostname 很别扭，通过 <code>kubectl get svc</code> 或者其它 k8s 管理系统无法直接获取 LB IP，这不是一个好的解决方法。</p>
-<p>我提了 <a href="https://github.com/kubernetes/kubernetes/pull/79976" target="_blank" rel="noopener">#79976</a> 这个 PR 可以解决问题: 给 kube-proxy 加 <code>--exclude-external-ip</code> 这个 flag 控制是否为 LB IP<br>创建 ipvs 规则和绑定 <code>kube-ipvs0</code>。</p>
-<p>但有人担心增加 kube-proxy flag 会增加 kube-proxy 的调试复杂度，看能否在 iptables 层面解决:<br><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-iptables.png" alt=""></p>
-<p>仔细一想，确实可行，打算有空实现下，重新提个 PR:<br><img src="https://imroc.io/assets/blog/troubleshooting-k8s-network/solve-in-prerouting.png" alt=""></p>
-<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>至此，我们一起完成了一段奇妙的问题排查之旅，信息量很大并且比较复杂，有些没看懂很正常，但我希望你可以收藏起来反复阅读，一起在技术的道路上打怪升级。</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://TencentCloudContainerTeam.github.io/2019/08/12/troubleshooting-with-kubernetes-network/" data-id="ckahkyzig000tatu5ly5pfv20" class="article-share-link">Share</a>
+      <a data-url="https://TencentCloudContainerTeam.github.io/2019/12/15/no-route-to-host/" data-id="ckbh9wiad000pagr8miq6byua" class="article-share-link">Share</a>
       
       
     </footer>
@@ -1486,7 +1366,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/06/">六月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
     </div>
   </div>
 
@@ -1499,6 +1379,14 @@
       <ul>
         
           <li>
+            <a href="/2020/06/16/kubernetes-app-deployment-best-practice-1/">Kubernetes 服务部署最佳实践(一)</a>
+          </li>
+        
+          <li>
+            <a href="/2020/06/16/tke-cluster-setup-best-practice/">TKE 集群组建最佳实践</a>
+          </li>
+        
+          <li>
             <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
           </li>
         
@@ -1508,14 +1396,6 @@
         
           <li>
             <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
-          </li>
-        
-          <li>
-            <a href="/2020/04/20/build-cloud-native-large-scale-distributed-monitoring-system-3/">打造云原生大型分布式监控系统(三): Thanos 部署与实践</a>
-          </li>
-        
-          <li>
-            <a href="/2020/04/06/build-cloud-native-large-scale-distributed-monitoring-system-2/">打造云原生大型分布式监控系统(二): Thanos 架构详解</a>
           </li>
         
       </ul>

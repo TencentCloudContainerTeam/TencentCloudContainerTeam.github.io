@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>TKE 集群组建最佳实践 | 腾讯云容器团队</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="作者: 陈鹏 Kubernetes 版本K8S 版本迭代比较快，新版本通常包含许多 bug 修复和新功能，旧版本逐渐淘汰，建议创建集群时选择当前 TKE 支持的最新版本，后续出新版本后也是可以支持 Master 和 节点的版本升级的。 网络模式: GlobalRouter vs VPC-CNIGlobalRouter 模式架构:   基于 CNI 和 网桥实现的容器网络能力，容器路由直接通过 VP">
+<meta name="keywords" content="container kubernetes tencentcloud">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TKE 集群组建最佳实践">
+<meta property="og:url" content="https://TencentCloudContainerTeam.github.io/2020/06/16/tke-cluster-setup-best-practice/index.html">
+<meta property="og:site_name" content="腾讯云容器团队">
+<meta property="og:description" content="作者: 陈鹏 Kubernetes 版本K8S 版本迭代比较快，新版本通常包含许多 bug 修复和新功能，旧版本逐渐淘汰，建议创建集群时选择当前 TKE 支持的最新版本，后续出新版本后也是可以支持 Master 和 节点的版本升级的。 网络模式: GlobalRouter vs VPC-CNIGlobalRouter 模式架构:   基于 CNI 和 网桥实现的容器网络能力，容器路由直接通过 VP">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/vpc-cni.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router-vs-vpc-cni.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/docker-as-runtime.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/containerd-as-runtime.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/service.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/ubuntu.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/centos.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-script.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-master-parameter.jpg">
+<meta property="og:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-kubelet-parameter.jpg">
+<meta property="og:updated_time" content="2020-06-16T01:53:49.351Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="TKE 集群组建最佳实践">
+<meta name="twitter:description" content="作者: 陈鹏 Kubernetes 版本K8S 版本迭代比较快，新版本通常包含许多 bug 修复和新功能，旧版本逐渐淘汰，建议创建集群时选择当前 TKE 支持的最新版本，后续出新版本后也是可以支持 Master 和 节点的版本升级的。 网络模式: GlobalRouter vs VPC-CNIGlobalRouter 模式架构:   基于 CNI 和 网桥实现的容器网络能力，容器路由直接通过 VP">
+<meta name="twitter:image" content="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router.jpg">
+  
+    <link rel="alternate" href="/atom.xml" title="腾讯云容器团队" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">腾讯云容器团队</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://TencentCloudContainerTeam.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-tke-cluster-setup-best-practice" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2020/06/16/tke-cluster-setup-best-practice/" class="article-date">
+  <time datetime="2020-06-16T01:00:00.000Z" itemprop="datePublished">2020-06-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      TKE 集群组建最佳实践
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>作者: <a href="https://imroc.io/" target="_blank" rel="noopener">陈鹏</a></p>
+<h2 id="Kubernetes-版本"><a href="#Kubernetes-版本" class="headerlink" title="Kubernetes 版本"></a>Kubernetes 版本</h2><p>K8S 版本迭代比较快，新版本通常包含许多 bug 修复和新功能，旧版本逐渐淘汰，建议创建集群时选择当前 TKE 支持的最新版本，后续出新版本后也是可以支持 Master 和 节点的版本升级的。</p>
+<h2 id="网络模式-GlobalRouter-vs-VPC-CNI"><a href="#网络模式-GlobalRouter-vs-VPC-CNI" class="headerlink" title="网络模式: GlobalRouter vs VPC-CNI"></a>网络模式: GlobalRouter vs VPC-CNI</h2><p><strong>GlobalRouter 模式架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router.jpg" alt=""></p>
+<ul>
+<li>基于 CNI 和 网桥实现的容器网络能力，容器路由直接通过 VPC 底层实现</li>
+<li>容器与节点在同一网络平面，但网段不与 VPC 网段重叠，容器网段地址充裕 </li>
+</ul>
+<p><strong>VPC-CNI 模式架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/vpc-cni.jpg" alt=""></p>
+<ul>
+<li>基于 CNI 和 VPC 弹性网卡实现的容器网络能力，容器路由通过弹性网卡，性能相比 Global Router 约提高 10%</li>
+<li>容器与节点在同一网络平面，网段在 VPC 网段内</li>
+<li>支持 Pod 固定 IP</li>
+</ul>
+<p><strong>对比:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/global-router-vs-vpc-cni.jpg" alt=""></p>
+<p><strong>支持三种使用方式:</strong></p>
+<ul>
+<li>创建集群时指定 GlobalRouter 模式</li>
+<li>创建集群时指定 VPC-CNI 模式，后续所有 Pod 都必须使用 VPC-CNI 模式创建</li>
+<li>创建集群时指定 GlobalRouter 模式，在需要使用 VPC-CNI 模式时为集群启用 VPC-CNI 的支持，即两种模式混用</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>绝大多数情况下应该选择 GlobalRouter，容器网段地址充裕，扩展性强，能适应规模较大的业务</li>
+<li>如果后期部分业务需要用到 VPC-CNI 模式，可以在 GlobalRouter 集群再开启 VPC-CNI 支持，也就是 GlobalRouter 与 VPC-CNI 混用，仅对部分业务使用 VPC-CNI 模式</li>
+<li>如果完全了解并接受 VPC-CNI 的各种限制，并且需要集群内所有 Pod 都用 VPC-CNI 模式，可以创建集群时选择 VPC-CNI 网络插件</li>
+</ul>
+<blockquote>
+<p>参考官方文档 《如何选择容器服务网络模式》: <a href="https://cloud.tencent.com/document/product/457/41636" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/41636</a></p>
+</blockquote>
+<h2 id="运行时-Docker-vs-Containerd"><a href="#运行时-Docker-vs-Containerd" class="headerlink" title="运行时: Docker vs Containerd"></a>运行时: Docker vs Containerd</h2><p><strong>Docker 作为运行时的架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/docker-as-runtime.jpg" alt=""></p>
+<ul>
+<li>kubelet 内置的 dockershim 模块帮傲娇的 docker 适配了 CRI 接口，然后 kubelet 自己调自己的 dockershim (通过 socket 文件)，然后 dockershim 再调 dockerd 接口 (Docker HTTP API)，接着 dockerd 还要再调 docker-containerd (gRPC) 来实现容器的创建与销毁等。</li>
+<li>为什么调用链这么长？ K8S 一开始支持的就只是 Docker，后来引入了 CRI，将运行时抽象以支持多种运行时，而 Docker 跟 K8S 在一些方面有一定的竞争，不甘做小弟，也就没在 dockerd 层面实现 CRI 接口，所以 kubelet 为了让 dockerd 支持 CRI，就自己为 dockerd 实现了 CRI。docker 本身内部组件也模块化了，再加上一层 CRI 适配，调用链肯定就长了。</li>
+</ul>
+<p><strong>Containerd 作为运行时的架构:</strong></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/containerd-as-runtime.jpg" alt=""></p>
+<ul>
+<li>containerd 1.1 之后，支持 CRI Plugin，即 containerd 自身这里就可以适配 CRI 接口。</li>
+<li>相比 Docker 方案，调用链少了 dockershim 和 dockerd。</li>
+</ul>
+<p><strong>对比:</strong></p>
+<ul>
+<li>containerd 方案由于绕过了 dockerd，调用链更短，组件更少，占用节点资源更少，绕过了 dockerd 本身的一些 bug，但 containerd 自身也还存在一些 bug (已修复一些，灰度中)。</li>
+<li>docker 方案历史比较悠久，相对更成熟，支持 docker api，功能丰富，符合大多数人的使用习惯。</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>Docker 方案 相比 containerd 更成熟，如果对稳定性要求很高，建议 docker 方案</li>
+<li>以下场景只能使用 docker: <ul>
+<li>Docker in docker (通常在 CI 场景)</li>
+<li>节点上使用 docker 命令</li>
+<li>调用 docker API</li>
+</ul>
+</li>
+<li>没有以上场景建议使用 containerd</li>
+</ul>
+<blockquote>
+<p>参考官方文档 《如何选择 Containerd 和 Docker》: <a href="https://cloud.tencent.com/document/product/457/35747" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/35747</a></p>
+</blockquote>
+<h2 id="Service-转发模式-iptables-vs-ipvs"><a href="#Service-转发模式-iptables-vs-ipvs" class="headerlink" title="Service 转发模式: iptables vs ipvs"></a>Service 转发模式: iptables vs ipvs</h2><p>先看看 Service 的转发原理:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/service.jpg" alt=""></p>
+<ul>
+<li>节点上的 kube-proxy 组件 watch apiserver，获取 Service 与 Endpoint，转化成 iptables 或 ipvs 规则并写到节点上</li>
+<li>集群内的 client 去访问 Service (Cluster IP)，会被 iptable/ipvs 规则负载均衡到 Service 对应的后端 pod</li>
+</ul>
+<p><strong>对比:</strong></p>
+<ul>
+<li>ipvs 模式性能更高，但也存在一些已知未解决的 bug</li>
+<li>iptables 模式更成熟稳定</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>对稳定性要求极高且 service 数量小于 2000，选 iptables</li>
+<li>其余场景首选 ipvs</li>
+</ul>
+<h2 id="集群类型-托管集群-vs-独立集群"><a href="#集群类型-托管集群-vs-独立集群" class="headerlink" title="集群类型: 托管集群 vs 独立集群"></a>集群类型: 托管集群 vs 独立集群</h2><p><strong>托管集群:</strong></p>
+<ul>
+<li>Master 组件用户不可见，由腾讯云托管</li>
+<li>很多新功能也是会率先支持托管的集群</li>
+<li>Master 的计算资源会根据集群规模自动扩容</li>
+<li>用户不需要为 Master 付费</li>
+</ul>
+<p><strong>独立集群:</strong></p>
+<ul>
+<li>Master 组件用户可以完全掌控</li>
+<li>用户需要为 Master 付费购买机器</li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>一般推荐托管集群</li>
+<li>如果希望能能够对 Master 完全掌控，可以使用独立集群 (比如对 Master 进行个性化定制实现高级功能)</li>
+</ul>
+<h2 id="节点操作系统"><a href="#节点操作系统" class="headerlink" title="节点操作系统"></a>节点操作系统</h2><p>TKE 主要支持 Ubuntu 和 CentOS 两类发行版，带 “TKE-Optimized” 后缀用的是 TKE 定制优化版的内核，其它的是 linux 社区官方开源内核:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/ubuntu.jpg" alt=""></p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/centos.jpg" alt=""></p>
+<p><strong>TKE-Optimized 的优势:</strong></p>
+<ul>
+<li>基于内核社区长期支持的 4.14.105 版本定制</li>
+<li>针对容器和云场景进行优化</li>
+<li>计算、存储和网络子系统均经过性能优化</li>
+<li>对内核缺陷修复支持较好</li>
+<li>完全开源： <a href="https://github.com/Tencent/TencentOS-kernel" target="_blank" rel="noopener">https://github.com/Tencent/TencentOS-kernel</a></li>
+</ul>
+<p><strong>选型建议:</strong></p>
+<ul>
+<li>推荐 “TKE-Optimized”，稳定性和技术支持都比较好</li>
+<li>如果需要更高版本内核，选非 “TKE-Optimized” 版本的操作系统</li>
+</ul>
+<h2 id="节点池"><a href="#节点池" class="headerlink" title="节点池"></a>节点池</h2><p>此特性当前正在灰度中，可申请开白名单使用。主要可用于批量管理节点：</p>
+<ul>
+<li>节点 Label 与 Taint</li>
+<li>节点组件启动参数</li>
+<li>节点自定义启动脚本</li>
+<li>操作系统与运行时 (暂未支持)</li>
+</ul>
+<blockquote>
+<p>产品文档：<a href="https://cloud.tencent.com/document/product/457/43719" target="_blank" rel="noopener">https://cloud.tencent.com/document/product/457/43719</a></p>
+</blockquote>
+<p><strong>适用场景:</strong></p>
+<ul>
+<li>异构节点分组管理，减少管理成本</li>
+<li>让集群更好支持复杂的调度规则 (Label, Taint)</li>
+<li>频繁扩缩容节点，减少操作成本</li>
+<li>节点日常维护(版本升级)</li>
+</ul>
+<p><strong>用法举例:</strong></p>
+<p>部分IO密集型业务需要高IO机型，为其创建一个节点池，配置机型并统一设置节点 Label 与 Taint，然后将 IO 密集型业务配置亲和性，选中 Label，使其调度到高 IO 机型的节点 (Taint 可以避免其它业务 Pod 调度上来)。</p>
+<p>随着时间的推移，业务量快速上升，该 IO 密集型业务也需要更多的计算资源，在业务高峰时段，HPA 功能自动为该业务扩容了 Pod，而节点计算资源不够用，这时节点池的自动伸缩功能自动扩容了节点，扛住了流量高峰。</p>
+<h2 id="启动脚本"><a href="#启动脚本" class="headerlink" title="启动脚本"></a>启动脚本</h2><p>添加节点时通过自定义数据配置节点启动脚本 (可用于修改组件启动参数、内核参数等):</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-script.jpg" alt=""></p>
+<h2 id="组件自定义参数"><a href="#组件自定义参数" class="headerlink" title="组件自定义参数"></a>组件自定义参数</h2><p>此特性当前也正在灰度中，可申请开白名单使用。</p>
+<p>创建集群时可自定义 Master 组件部分启动参数:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-master-parameter.jpg" alt=""></p>
+<p>添加节点时可自定义 kubelet 部分启动参数:</p>
+<p><img src="https://imroc.io/assets/blog/tke-best-practices-and-troubleshooting/custom-kubelet-parameter.jpg" alt=""></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://TencentCloudContainerTeam.github.io/2020/06/16/tke-cluster-setup-best-practice/" data-id="ckbh9wiak000uagr8brxoy3a2" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2020/06/16/kubernetes-app-deployment-best-practice-1/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          Kubernetes 服务部署最佳实践(一)
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2020/05/13/K8s-ad-controller-bug/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/06/">六月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/05/">五月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/04/">四月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/03/">三月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/01/">一月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/12/">十二月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/11/">十一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/04/">四月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">一月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/12/">十二月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/11/">十一月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/10/">十月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2020/06/16/kubernetes-app-deployment-best-practice-1/">Kubernetes 服务部署最佳实践(一)</a>
+          </li>
+        
+          <li>
+            <a href="/2020/06/16/tke-cluster-setup-best-practice/">TKE 集群组建最佳实践</a>
+          </li>
+        
+          <li>
+            <a href="/2020/05/13/K8s-ad-controller-bug/">揭秘 Kubernetes attach/detach controller 逻辑漏洞致使 pod 启动失败</a>
+          </li>
+        
+          <li>
+            <a href="/2020/05/08/containerd-image-file-loss/">揭秘！containerd 镜像文件丢失问题，竟是镜像生成惹得祸</a>
+          </li>
+        
+          <li>
+            <a href="/2020/04/24/k8s-configmap-volume/">大规模使用ConfigMap卷的负载分析及缓解方案</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2020 腾讯云容器团队<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
