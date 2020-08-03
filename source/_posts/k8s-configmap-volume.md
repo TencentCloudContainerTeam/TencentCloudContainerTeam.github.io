@@ -19,7 +19,7 @@ Kubelet在启动的时候，会创建ConfigMapManager（以及SecretManager）�
 
 ### WatchChangeDetectionStrategy(Watch)
 
-这是`1.12+`的默认策略。
+这是`1.14+`的默认策略。
 
 看名字，这个策略使用K8s经典的ListWatch模式。在Pod创建时，对每个引用到的ConfigMap，都会先从ApiServer缓存（指定ResourceVersion="0"）获取，然后对后续变化进行Watch。
 
@@ -58,7 +58,7 @@ func (c *objectCache) newReflector(namespace, name string) *objectCacheItem {
 
 ### TTLCacheChangeDetectionStrategy(Cache)
 
-这是`1.10`及`1.11`版本的默认策略，且不可通过参数或者配置文件修改。
+这是`1.10~1.13`版本的默认策略，`1.12+`可以通过配置文件进行定制。
 
 看名字，这是带TTL的缓存方式。第一次获取时，从ApiServer获取最新内容，超过TTL后，如果读取ConfigMap，会从ApiServer缓存获取(Get请求指定ResouceVersion=0)进行刷新，以减小对ApiServer和Etcd的压力。
 ```go
