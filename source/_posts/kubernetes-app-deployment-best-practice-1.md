@@ -1,5 +1,5 @@
 ---
-title: "Kubernetes 服务部署最佳实践(一)"
+title: "Kubernetes 服务部署最佳实践(一) 如何合理利用资源"
 date: 2020/06/16 09:50:00
 ---
 
